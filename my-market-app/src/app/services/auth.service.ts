@@ -15,8 +15,12 @@ export class AuthService {
   }
 
   login(keyId: string, secretKey: string): Observable<any> {
+    console.log('AuthService: attempting login...');
     return this.http.post('/api/login', { keyId, secretKey }).pipe(
-      tap(() => this.isAuthenticatedSubject.next(true))
+      tap((response) => {
+        console.log('AuthService: login successful', response);
+        this.isAuthenticatedSubject.next(true);
+      })
     );
   }
 

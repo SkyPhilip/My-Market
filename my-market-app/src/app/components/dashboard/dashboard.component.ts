@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AlpacaService } from '../../services/alpaca.service';
 import { ChartComponent } from '../chart/chart.component';
@@ -12,6 +12,7 @@ interface IndexCard {
   changePercent: number | null;
   chartData: LineData<Time>[];
   color: string;
+  loaded: boolean;
 }
 
 @Component({
@@ -30,11 +31,15 @@ interface IndexCard {
             </div>
             <div class="index-card__price">
               @if (card.currentPrice !== null) {
-                <span class="price">\${{ card.currentPrice | number:'1.2-2' }}</span>
-                <span class="change" [class.positive]="(card.change ?? 0) >= 0" [class.negative]="(card.change ?? 0) < 0">
-                  {{ (card.change ?? 0) >= 0 ? '+' : '' }}{{ card.change | number:'1.2-2' }}
-                  ({{ (card.changePercent ?? 0) >= 0 ? '+' : '' }}{{ card.changePercent | number:'1.2-2' }}%)
-                </span>
+                <span class="price">{{'$'}}{{ card.currentPrice | number:'1.2-2' }}</span>
+                @if (card.change !== null) {
+                  <span class="change" [class.positive]="card.change >= 0" [class.negative]="card.change < 0">
+                    {{ card.change >= 0 ? '+' : '' }}{{ card.change | number:'1.2-2' }}
+                    ({{ card.changePercent! >= 0 ? '+' : '' }}{{ card.changePercent | number:'1.2-2' }}%)
+                  </span>
+                }
+              } @else if (card.loaded) {
+                <span class="loading">No data available</span>
               } @else {
                 <span class="loading">Loading...</span>
               }
@@ -106,12 +111,12 @@ interface IndexCard {
 })
 export class DashboardComponent implements OnInit {
   indices: IndexCard[] = [
-    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#4a9eff' },
-    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#28a745' },
-    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#ffc107' }
+    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#4a9eff', loaded: false },
+    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#28a745', loaded: false },
+    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#ffc107', loaded: false }
   ];
 
-  constructor(private alpacaService: AlpacaService) {}
+  constructor(private alpacaService: AlpacaService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.loadMarketSummary();
@@ -121,14 +126,22 @@ export class DashboardComponent implements OnInit {
   private loadMarketSummary(): void {
     this.alpacaService.getMarketSummary().subscribe({
       next: (summary) => {
+        console.log('Market summary received:', summary);
         summary.forEach(item => {
           const card = this.indices.find(i => i.symbol === item.symbol);
           if (card) {
             card.currentPrice = item.currentPrice;
             card.change = item.change;
             card.changePercent = item.changePercent;
+            card.loaded = true;
           }
         });
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Market summary error:', err);
+        this.indices.forEach(c => c.loaded = true);
+        this.cdr.detectChanges();
       }
     });
   }
@@ -138,10 +151,20 @@ export class DashboardComponent implements OnInit {
     this.indices.forEach(card => {
       this.alpacaService.getBars(card.symbol, '5Min', today, today).subscribe({
         next: (bars) => {
+          console.log(`Bars received for ${card.symbol}:`, bars.length);
           card.chartData = bars.map(bar => ({
             time: Math.floor(new Date(bar.time).getTime() / 1000) as Time,
             value: bar.close
           }));
+          // Use last bar close as fallback price if snapshot didn't provide one
+          if (card.currentPrice === null && bars.length > 0) {
+            card.currentPrice = bars[bars.length - 1].close;
+            card.loaded = true;
+          }
+          this.cdr.detectChanges();
+        },
+        error: (err) => {
+          console.error(`Bars error for ${card.symbol}:`, err);
         }
       });
     });

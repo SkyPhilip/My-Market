@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AlpacaService } from '../../services/alpaca.service';
 
@@ -100,11 +100,18 @@ import { AlpacaService } from '../../services/alpaca.service';
 export class SettingsComponent implements OnInit {
   account: any = null;
 
-  constructor(private alpacaService: AlpacaService) {}
+  constructor(private alpacaService: AlpacaService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.alpacaService.getAccount().subscribe({
-      next: (data) => this.account = data
+      next: (data) => {
+        console.log('Settings: account data received:', data);
+        this.account = data;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Settings: account error:', err);
+      }
     });
   }
 }

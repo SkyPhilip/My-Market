@@ -118,26 +118,35 @@ app.get('/api/market-summary', async (req, res) => {
   try {
     const alpaca = getAlpacaClient(req);
     const symbols = ['DIA', 'SPY', 'QQQ'];
-    const snapshots = await alpaca.getSnapshots(symbols);
+    const snapshotsRaw = await alpaca.getSnapshots(symbols);
+
+    // SDK returns array-like object indexed by number; convert to symbol-keyed map
+    const snapshotMap = {};
+    const values = Array.isArray(snapshotsRaw) ? snapshotsRaw : Object.values(snapshotsRaw);
+    values.forEach(snap => {
+      if (snap && snap.symbol) {
+        snapshotMap[snap.symbol] = snap;
+      }
+    });
 
     const summary = symbols.map(symbol => {
-      const snap = snapshots[symbol];
+      const snap = snapshotMap[symbol];
       if (!snap) {
-        return { symbol, error: 'No data available' };
+        return { symbol, currentPrice: null, prevClose: null, change: null, changePercent: null };
       }
       const latestTrade = snap.LatestTrade || snap.latestTrade;
       const dailyBar = snap.DailyBar || snap.dailyBar;
       const prevDailyBar = snap.PrevDailyBar || snap.prevDailyBar;
 
-      const currentPrice = latestTrade ? latestTrade.Price || latestTrade.p : null;
-      const prevClose = prevDailyBar ? prevDailyBar.Close || prevDailyBar.c : null;
+      const currentPrice = latestTrade ? (latestTrade.Price || latestTrade.p) : null;
+      const prevClose = prevDailyBar ? (prevDailyBar.ClosePrice || prevDailyBar.Close || prevDailyBar.c) : null;
       const change = currentPrice && prevClose ? currentPrice - prevClose : null;
       const changePercent = change && prevClose ? (change / prevClose) * 100 : null;
 
       return {
         symbol,
-        currentPrice,
-        prevClose,
+        currentPrice: currentPrice ? parseFloat(currentPrice.toFixed(2)) : null,
+        prevClose: prevClose ? parseFloat(prevClose.toFixed(2)) : null,
         change: change ? parseFloat(change.toFixed(2)) : null,
         changePercent: changePercent ? parseFloat(changePercent.toFixed(2)) : null
       };
