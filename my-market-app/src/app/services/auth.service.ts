@@ -6,22 +6,14 @@ import { AlpacaAccount } from '../models/alpaca.models';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private readonly _isAuthenticated = signal<boolean>(this.hasStoredCredentials());
+  #credentials: { keyId: string; secretKey: string } | null = null;
+  private readonly _isAuthenticated = signal<boolean>(false);
   readonly isAuthenticated = this._isAuthenticated.asReadonly();
 
   constructor(private http: HttpClient, private router: Router) {}
 
-  private hasStoredCredentials(): boolean {
-    return !!sessionStorage.getItem('alpaca_key_id') && !!sessionStorage.getItem('alpaca_secret_key');
-  }
-
   getCredentials(): { keyId: string; secretKey: string } | null {
-    const keyId = sessionStorage.getItem('alpaca_key_id');
-    const secretKey = sessionStorage.getItem('alpaca_secret_key');
-    if (keyId && secretKey) {
-      return { keyId, secretKey };
-    }
-    return null;
+    return this.#credentials;
   }
 
   login(keyId: string, secretKey: string): Observable<HttpResponse<AlpacaAccount>> {
@@ -35,14 +27,12 @@ export class AuthService {
   }
 
   storeCredentials(keyId: string, secretKey: string): void {
-    sessionStorage.setItem('alpaca_key_id', keyId);
-    sessionStorage.setItem('alpaca_secret_key', secretKey);
+    this.#credentials = { keyId, secretKey };
     this._isAuthenticated.set(true);
   }
 
   logout(): void {
-    sessionStorage.removeItem('alpaca_key_id');
-    sessionStorage.removeItem('alpaca_secret_key');
+    this.#credentials = null;
     this._isAuthenticated.set(false);
     this.router.navigate(['/login']);
   }

@@ -6,7 +6,7 @@ import { FmpProfile, FmpSectorPerformance } from '../models/fmp.models';
 
 @Injectable({ providedIn: 'root' })
 export class FmpService {
-  readonly #baseUrl = '/stable';
+  readonly #baseUrl = 'https://financialmodelingprep.com/stable';
   readonly #apiKey = 'sCcFQ6sVkljriewJXLu1RGznuKSaJ6pE';
 
   #sectorCache = new Map<string, string>();
