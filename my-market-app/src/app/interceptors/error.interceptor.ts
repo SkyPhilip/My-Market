@@ -13,7 +13,7 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
   return next(req).pipe(
     catchError(error => {
       console.log('ErrorInterceptor caught:', req.url, 'status:', error.status, 'body:', error.error);
-      const isLoginRequest = req.url.includes('/v2/account') && !authService.isAuthenticated;
+      const isLoginRequest = req.url.includes('/v2/account') && !authService.isAuthenticated();
 
       if (error.status === 401 && !isLoginRequest) {
         console.log('ErrorInterceptor: credentials invalid, redirecting to login');

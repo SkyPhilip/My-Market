@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AlpacaService } from '../../services/alpaca.service';
 
@@ -9,43 +9,43 @@ import { AlpacaService } from '../../services/alpaca.service';
   template: `
     <div class="settings">
       <h2>Alpaca Account Settings</h2>
-      @if (account) {
+      @if (account()) {
         <div class="settings-grid">
           <div class="setting-item">
             <span class="label">Account Status</span>
-            <span class="value" [class.active]="account.status === 'ACTIVE'">{{ account.status }}</span>
+            <span class="value" [class.active]="account().status === 'ACTIVE'">{{ account().status }}</span>
           </div>
           <div class="setting-item">
             <span class="label">Account Number</span>
-            <span class="value">{{ account.account_number }}</span>
+            <span class="value">{{ account().account_number }}</span>
           </div>
           <div class="setting-item">
             <span class="label">Equity</span>
-            <span class="value">\${{ account.equity | number:'1.2-2' }}</span>
+            <span class="value">\${{ account().equity | number:'1.2-2' }}</span>
           </div>
           <div class="setting-item">
             <span class="label">Buying Power</span>
-            <span class="value">\${{ account.buying_power | number:'1.2-2' }}</span>
+            <span class="value">\${{ account().buying_power | number:'1.2-2' }}</span>
           </div>
           <div class="setting-item">
             <span class="label">Cash</span>
-            <span class="value">\${{ account.cash | number:'1.2-2' }}</span>
+            <span class="value">\${{ account().cash | number:'1.2-2' }}</span>
           </div>
           <div class="setting-item">
             <span class="label">Portfolio Value</span>
-            <span class="value">\${{ account.portfolio_value | number:'1.2-2' }}</span>
+            <span class="value">\${{ account().portfolio_value | number:'1.2-2' }}</span>
           </div>
           <div class="setting-item">
             <span class="label">Day Trade Count</span>
-            <span class="value">{{ account.daytrade_count }}</span>
+            <span class="value">{{ account().daytrade_count }}</span>
           </div>
           <div class="setting-item">
             <span class="label">Pattern Day Trader</span>
-            <span class="value">{{ account.pattern_day_trader ? 'Yes' : 'No' }}</span>
+            <span class="value">{{ account().pattern_day_trader ? 'Yes' : 'No' }}</span>
           </div>
           <div class="setting-item">
             <span class="label">Trading Blocked</span>
-            <span class="value">{{ account.trading_blocked ? 'Yes' : 'No' }}</span>
+            <span class="value">{{ account().trading_blocked ? 'Yes' : 'No' }}</span>
           </div>
           <div class="setting-item">
             <span class="label">Account Type</span>
@@ -98,16 +98,14 @@ import { AlpacaService } from '../../services/alpaca.service';
   `]
 })
 export class SettingsComponent implements OnInit {
-  account: any = null;
-
-  constructor(private alpacaService: AlpacaService, private cdr: ChangeDetectorRef) {}
+  private alpacaService = inject(AlpacaService);
+  readonly account = signal<any>(null);
 
   ngOnInit(): void {
     this.alpacaService.getAccount().subscribe({
       next: (data) => {
         console.log('Settings: account data received:', data);
-        this.account = data;
-        this.cdr.detectChanges();
+        this.account.set(data);
       },
       error: (err) => {
         console.error('Settings: account error:', err);

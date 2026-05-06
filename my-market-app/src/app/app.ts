@@ -1,6 +1,5 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { CommonModule } from '@angular/common';
 import { HeaderComponent } from './components/header/header.component';
 import { NotificationComponent } from './components/notification/notification.component';
 import { AuthService } from './services/auth.service';
@@ -8,10 +7,10 @@ import { AuthService } from './services/auth.service';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, HeaderComponent, NotificationComponent],
+  imports: [RouterOutlet, HeaderComponent, NotificationComponent],
   template: `
     <app-notification></app-notification>
-    @if (authService.isAuthenticated$ | async) {
+    @if (authService.isAuthenticated()) {
       <app-header></app-header>
     }
     <router-outlet></router-outlet>
@@ -25,5 +24,5 @@ import { AuthService } from './services/auth.service';
   `]
 })
 export class App {
-  constructor(public authService: AuthService) {}
+  protected authService = inject(AuthService);
 }

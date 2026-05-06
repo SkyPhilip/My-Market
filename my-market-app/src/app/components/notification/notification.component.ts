@@ -1,14 +1,12 @@
 import { Component, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { NotificationService, Notification } from '../../services/notification.service';
+import { NotificationService } from '../../services/notification.service';
 
 @Component({
   selector: 'app-notification',
   standalone: true,
-  imports: [CommonModule],
   template: `
     <div class="notification-container">
-      @for (notification of notifications$ | async; track notification.id) {
+      @for (notification of notificationService.notifications(); track notification.id) {
         <div class="notification" [class]="'notification--' + notification.type" (click)="dismiss(notification.id)">
           <span class="notification__message">{{ notification.message }}</span>
           <button class="notification__close">&times;</button>
@@ -62,8 +60,7 @@ import { NotificationService, Notification } from '../../services/notification.s
   `]
 })
 export class NotificationComponent {
-  private notificationService = inject(NotificationService);
-  notifications$ = this.notificationService.notifications$;
+  protected notificationService = inject(NotificationService);
 
   dismiss(id: number): void {
     this.notificationService.dismiss(id);

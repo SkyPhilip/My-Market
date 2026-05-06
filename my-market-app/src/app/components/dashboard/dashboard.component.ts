@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AlpacaService } from '../../services/alpaca.service';
 import { ChartComponent } from '../chart/chart.component';
@@ -23,7 +23,7 @@ interface IndexCard {
     <div class="dashboard">
       <h2>Market Overview</h2>
       <div class="index-cards">
-        @for (card of indices; track card.symbol) {
+        @for (card of indices(); track card.symbol) {
           <div class="index-card">
             <div class="index-card__header">
               <span class="index-card__name">{{ card.name }}</span>
@@ -110,13 +110,13 @@ interface IndexCard {
   `]
 })
 export class DashboardComponent implements OnInit {
-  indices: IndexCard[] = [
+  private alpacaService = inject(AlpacaService);
+
+  readonly indices = signal<IndexCard[]>([
     { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#4a9eff', loaded: false },
     { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#28a745', loaded: false },
     { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#ffc107', loaded: false }
-  ];
-
-  constructor(private alpacaService: AlpacaService, private cdr: ChangeDetectorRef) {}
+  ]);
 
   ngOnInit(): void {
     this.loadMarketSummary();
@@ -127,41 +127,40 @@ export class DashboardComponent implements OnInit {
     this.alpacaService.getMarketSummary().subscribe({
       next: (summary) => {
         console.log('Market summary received:', summary);
-        summary.forEach(item => {
-          const card = this.indices.find(i => i.symbol === item.symbol);
-          if (card) {
-            card.currentPrice = item.currentPrice;
-            card.change = item.change;
-            card.changePercent = item.changePercent;
-            card.loaded = true;
+        this.indices.update(cards => cards.map(card => {
+          const item = summary.find(i => i.symbol === card.symbol);
+          if (item) {
+            return { ...card, currentPrice: item.currentPrice, change: item.change, changePercent: item.changePercent, loaded: true };
           }
-        });
-        this.cdr.detectChanges();
+          return card;
+        }));
       },
       error: (err) => {
         console.error('Market summary error:', err);
-        this.indices.forEach(c => c.loaded = true);
-        this.cdr.detectChanges();
+        this.indices.update(cards => cards.map(card => ({ ...card, loaded: true })));
       }
     });
   }
 
   private loadCharts(): void {
     const today = new Date().toISOString().split('T')[0];
-    this.indices.forEach(card => {
+    this.indices().forEach(card => {
       this.alpacaService.getBars(card.symbol, '5Min', today, today).subscribe({
         next: (bars) => {
           console.log(`Bars received for ${card.symbol}:`, bars.length);
-          card.chartData = bars.map(bar => ({
+          const chartData = bars.map(bar => ({
             time: Math.floor(new Date(bar.time).getTime() / 1000) as Time,
             value: bar.close
           }));
-          // Use last bar close as fallback price if snapshot didn't provide one
-          if (card.currentPrice === null && bars.length > 0) {
-            card.currentPrice = bars[bars.length - 1].close;
-            card.loaded = true;
-          }
-          this.cdr.detectChanges();
+          this.indices.update(cards => cards.map(c => {
+            if (c.symbol !== card.symbol) return c;
+            const updates: Partial<IndexCard> = { chartData };
+            if (c.currentPrice === null && bars.length > 0) {
+              updates.currentPrice = bars[bars.length - 1].close;
+              updates.loaded = true;
+            }
+            return { ...c, ...updates };
+          }));
         },
         error: (err) => {
           console.error(`Bars error for ${card.symbol}:`, err);
