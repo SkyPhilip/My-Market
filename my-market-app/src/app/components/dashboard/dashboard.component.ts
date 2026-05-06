@@ -1,7 +1,9 @@
 import { Component, OnInit, OnDestroy, computed, signal, inject, WritableSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
 import { AlpacaService } from '../../services/alpaca.service';
+import { FmpService } from '../../services/fmp.service';
 import { ChartComponent } from '../chart/chart.component';
 import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaBarsResponse, AlpacaErrorBody, AlpacaSnapshotsResponse, AlpacaWatchlist, AlpacaSnapshot } from '../../models/alpaca.models';
@@ -28,27 +30,6 @@ interface WatchlistRow {
 
 type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent';
 type SortDirection = 'asc' | 'desc';
-
-const SECTOR_KEYWORDS: [RegExp, string][] = [
-  [/\b(oil|petroleum|energy|gas|fuel|pipeline)\b/i, 'Energy'],
-  [/\b(gold|silver|copper|metal|mining|commodit|palladium|platinum)\b/i, 'Commodities'],
-  [/\b(technology|software|semiconductor|chip|data|cloud|cyber|ai\b|computing|internet|digital|nvidia|alphabet|microsoft|palantir|oracle)/i, 'Technology'],
-  [/\b(health|pharma|biotech|medical|therapeut|oncolog)/i, 'Healthcare'],
-  [/\b(bank|financial|capital|insurance|credit|lending|payment)/i, 'Financial'],
-  [/\b(utilit|electric|power|nuclear|solar|wind|renewable)/i, 'Utilities'],
-  [/\b(material|chemical|steel|aluminum|lithium|industrial metal)/i, 'Materials'],
-  [/\b(consumer|retail|commerce|shop|apparel|food|beverage|restaurant)/i, 'Consumer'],
-  [/\b(real estate|reit|property|mortgage)/i, 'Real Estate'],
-  [/\b(communicat|media|telecom|entertainment|broadcast|stream)/i, 'Communication'],
-  [/\b(industrial|aerospace|defense|transport|logistic|manufactur)/i, 'Industrials'],
-];
-
-function deriveSector(assetName: string): string {
-  for (const [pattern, sector] of SECTOR_KEYWORDS) {
-    if (pattern.test(assetName)) return sector;
-  }
-  return '—';
-}
 
 @Component({
   selector: 'app-dashboard',
@@ -311,6 +292,7 @@ function deriveSector(assetName: string): string {
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   private alpacaService = inject(AlpacaService);
+  private fmpService = inject(FmpService);
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
   private static readonly REFRESH_MS = 15 * 60 * 1000;
 
@@ -461,13 +443,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (wlResult.okRes?.body?.length) {
       // List endpoint doesn't include assets — fetch the full watchlist by ID
       const id = wlResult.okRes.body[0].id;
-      const detail = await this.alpacaService.getWatchlist(id).toPromise();
+      const detail = await firstValueFrom(this.alpacaService.getWatchlist(id));
       if (detail?.ok && detail.body) {
         watchlist = detail.body;
       }
     } else if (wlResult.okRes) {
       const defaultSymbols = ['CEG', 'XLE', 'SLV', 'COPX', 'CRWV', 'GLD', 'GOOGL', 'MSFT', 'NVDA', 'PLTR'];
-      const createResult = await this.alpacaService.createWatchlist('My Watchlist', defaultSymbols).toPromise();
+      const createResult = await firstValueFrom(this.alpacaService.createWatchlist('My Watchlist', defaultSymbols));
       if (createResult?.ok && createResult.body) {
         watchlist = createResult.body;
       }
@@ -486,6 +468,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
 
     const symbols = watchlist.assets.map(a => a.symbol);
+
+    // Fetch sectors from FMP for symbols not yet cached
+    const uncachedSymbols = symbols.filter(s => !this.fmpService.getCachedSector(s));
+    if (uncachedSymbols.length) {
+      try {
+        await firstValueFrom(this.fmpService.getProfiles(uncachedSymbols));
+      } catch {
+        // FMP lookup failed — continue without sector data
+      }
+    }
+
     const snapResult = await this.fetchWatchlistSnapshots(symbols);
     if (!snapResult.okRes?.body) return;
 
@@ -496,7 +489,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       const prevClose = snap?.prevDailyBar?.c ?? null;
       const change = price && prevClose ? +(price - prevClose).toFixed(2) : null;
       const changePercent = price && prevClose ? +((change! / prevClose) * 100).toFixed(2) : null;
-      const sector = deriveSector(asset.name);
+      const sector = this.fmpService.getCachedSector(asset.symbol) ?? '\u2014';
       return { symbol: asset.symbol, name: asset.name, sector, price, change, changePercent };
     });
     this.watchlistRows.set(rows);
@@ -514,19 +507,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     this.adding.set(true);
     try {
-      const result = await this.alpacaService.addToWatchlist(this.watchlistId, symbol).toPromise();
+      const result = await firstValueFrom(this.alpacaService.addToWatchlist(this.watchlistId, symbol));
       if (result?.ok && result.body) {
         this.newSymbol = '';
         const addedAsset = result.body.assets.find(a => a.symbol === symbol);
         if (addedAsset) {
-          // Fetch snapshot for just the new symbol
-          const snapResult = await this.alpacaService.getSnapshots([symbol]).toPromise();
+          // Fetch snapshot and sector for the new symbol
+          const [snapResult] = await Promise.all([
+            firstValueFrom(this.alpacaService.getSnapshots([symbol])),
+            this.fmpService.getCachedSector(symbol)
+              ? Promise.resolve()
+              : firstValueFrom(this.fmpService.getProfiles([symbol])),
+          ]);
           const snap = snapResult?.body?.[symbol];
           const price = snap?.latestTrade?.p ?? snap?.minuteBar?.c ?? null;
           const prevClose = snap?.prevDailyBar?.c ?? null;
           const change = price && prevClose ? +(price - prevClose).toFixed(2) : null;
           const changePercent = price && prevClose ? +((change! / prevClose) * 100).toFixed(2) : null;
-          const sector = deriveSector(addedAsset.name);
+          const sector = this.fmpService.getCachedSector(symbol) ?? '\u2014';
           this.watchlistRows.update(rows => [...rows, { symbol: addedAsset.symbol, name: addedAsset.name, sector, price, change, changePercent }]);
         }
       }
@@ -537,7 +535,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   async removeSymbol(symbol: string): Promise<void> {
     if (!this.watchlistId) return;
-    const result = await this.alpacaService.removeFromWatchlist(this.watchlistId, symbol).toPromise();
+    const result = await firstValueFrom(this.alpacaService.removeFromWatchlist(this.watchlistId, symbol));
     if (result?.ok) {
       this.watchlistRows.update(rows => rows.filter(r => r.symbol !== symbol));
     }

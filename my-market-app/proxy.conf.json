@@ -1,0 +1,7 @@
+{
+  "/stable": {
+    "target": "https://financialmodelingprep.com",
+    "changeOrigin": true,
+    "secure": true
+  }
+}
