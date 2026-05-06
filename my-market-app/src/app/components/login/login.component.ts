@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { HttpResponse } from '@angular/common/http';
 import { AuthService } from '../../services/auth.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
+import { AlpacaAccount, AlpacaErrorBody } from '../../models/alpaca.models';
 
 @Component({
   selector: 'app-login',
@@ -151,7 +152,7 @@ export class LoginComponent {
   private authService = inject(AuthService);
   private router = inject(Router);
 
-  fetch = fetchFnWithState<any, any, { keyId: string; secretKey: string }>((credentials) =>
+  fetch = fetchFnWithState<AlpacaAccount, AlpacaErrorBody, { keyId: string; secretKey: string }>((credentials) =>
     this.authService.login(credentials.keyId, credentials.secretKey)
   );
 
@@ -162,7 +163,7 @@ export class LoginComponent {
       prefetchOrBusy,
       busy,
       okRes,
-      errorRes: errorRes as HttpResponse<any> | undefined,
+      errorRes: errorRes as HttpResponse<AlpacaErrorBody> | undefined,
       errorResOrException,
       exception,
     };

@@ -1,9 +1,9 @@
-import { Component, OnInit, computed, signal, inject } from '@angular/core';
+import { Component, OnInit, computed, signal, inject, WritableSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { HttpResponse } from '@angular/common/http';
 import { AlpacaService } from '../../services/alpaca.service';
 import { ChartComponent } from '../chart/chart.component';
 import { fetchFnWithState } from '../../utils/fetch-rx';
+import { AlpacaBarsResponse, AlpacaErrorBody, AlpacaSnapshotsResponse } from '../../models/alpaca.models';
 import { LineData, Time } from 'lightweight-charts';
 
 interface IndexCard {
@@ -125,11 +125,13 @@ export class DashboardComponent implements OnInit {
     { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#ffc107' },
   ];
 
-  readonly indices = signal<IndexCard[]>(DashboardComponent.CARD_DEFAULTS);
+  readonly indices: WritableSignal<IndexCard[]> = signal<IndexCard[]>(DashboardComponent.CARD_DEFAULTS);
 
-  fetchSummary = fetchFnWithState<any>(() => this.alpacaService.getMarketSummary());
+  fetchSummary = fetchFnWithState<AlpacaSnapshotsResponse, AlpacaErrorBody>(() =>
+    this.alpacaService.getMarketSummary()
+  );
 
-  fetchBars = fetchFnWithState<any, any, string>((symbol) => {
+  fetchBars = fetchFnWithState<AlpacaBarsResponse, AlpacaErrorBody, string>((symbol: string) => {
     const today = new Date().toISOString().split('T')[0];
     return this.alpacaService.getBars(symbol, '5Min', today, today);
   });
@@ -147,7 +149,8 @@ export class DashboardComponent implements OnInit {
   private async loadMarketSummary(): Promise<void> {
     const result = await this.fetchSummary();
     if (result.okRes) {
-      const snapshots = (result.okRes as HttpResponse<any>).body;
+      const snapshots = result.okRes.body;
+      if (!snapshots) return;
       this.indices.update(cards => cards.map(card => {
         const snap = snapshots[card.symbol];
         if (!snap) return card;
@@ -164,8 +167,8 @@ export class DashboardComponent implements OnInit {
     for (const card of this.indices()) {
       const result = await this.fetchBars(card.symbol);
       if (result.okRes) {
-        const rawBars = (result.okRes as HttpResponse<any>).body?.bars || [];
-        const chartData = rawBars.map((bar: any) => ({
+        const rawBars = result.okRes.body?.bars ?? [];
+        const chartData: LineData<Time>[] = rawBars.map(bar => ({
           time: Math.floor(new Date(bar.t).getTime() / 1000) as Time,
           value: bar.c
         }));

@@ -2,6 +2,7 @@ import { Component, OnInit, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AlpacaService } from '../../services/alpaca.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
+import { AlpacaAccount, AlpacaErrorBody } from '../../models/alpaca.models';
 
 @Component({
   selector: 'app-settings',
@@ -12,47 +13,51 @@ import { fetchFnWithState } from '../../utils/fetch-rx';
       <h2>Alpaca Account Settings</h2>
       @if (fetchState().prefetchOrBusy) {
         <p class="loading">Loading account information...</p>
-      } @else if (fetchState().okRes; as okRes) {
+      } @else if (account(); as account) {
         <div class="settings-grid">
-          <div class="setting-item">
-            <span class="label">Account Status</span>
-            <span class="value" [class.active]="okRes.body.status === 'ACTIVE'">{{ okRes.body.status }}</span>
+          <div class="settings-column">
+            <div class="setting-item">
+              <span class="label">Account Number</span>
+              <span class="value">{{ account.account_number }}</span>
+            </div>
+            <div class="setting-item">
+              <span class="label">Equity</span>
+              <span class="value">\${{ account.equity | number:'1.2-2' }}</span>
+            </div>
+            <div class="setting-item">
+              <span class="label">Buying Power</span>
+              <span class="value">\${{ account.buying_power | number:'1.2-2' }}</span>
+            </div>
+            <div class="setting-item">
+              <span class="label">Cash</span>
+              <span class="value">\${{ account.cash | number:'1.2-2' }}</span>
+            </div>
+            <div class="setting-item">
+              <span class="label">Portfolio Value</span>
+              <span class="value">\${{ account.portfolio_value | number:'1.2-2' }}</span>
+            </div>
           </div>
-          <div class="setting-item">
-            <span class="label">Account Number</span>
-            <span class="value">{{ okRes.body.account_number }}</span>
-          </div>
-          <div class="setting-item">
-            <span class="label">Equity</span>
-            <span class="value">\${{ okRes.body.equity | number:'1.2-2' }}</span>
-          </div>
-          <div class="setting-item">
-            <span class="label">Buying Power</span>
-            <span class="value">\${{ okRes.body.buying_power | number:'1.2-2' }}</span>
-          </div>
-          <div class="setting-item">
-            <span class="label">Cash</span>
-            <span class="value">\${{ okRes.body.cash | number:'1.2-2' }}</span>
-          </div>
-          <div class="setting-item">
-            <span class="label">Portfolio Value</span>
-            <span class="value">\${{ okRes.body.portfolio_value | number:'1.2-2' }}</span>
-          </div>
-          <div class="setting-item">
-            <span class="label">Day Trade Count</span>
-            <span class="value">{{ okRes.body.daytrade_count }}</span>
-          </div>
-          <div class="setting-item">
-            <span class="label">Pattern Day Trader</span>
-            <span class="value">{{ okRes.body.pattern_day_trader ? 'Yes' : 'No' }}</span>
-          </div>
-          <div class="setting-item">
-            <span class="label">Trading Blocked</span>
-            <span class="value">{{ okRes.body.trading_blocked ? 'Yes' : 'No' }}</span>
-          </div>
-          <div class="setting-item">
-            <span class="label">Account Type</span>
-            <span class="value">Paper Trading</span>
+          <div class="settings-column">
+            <div class="setting-item">
+              <span class="label">Account Status</span>
+              <span class="value" [class.active]="account.status === 'ACTIVE'">{{ account.status }}</span>
+            </div>
+            <div class="setting-item">
+              <span class="label">Day Trade Count</span>
+              <span class="value">{{ account.daytrade_count }}</span>
+            </div>
+            <div class="setting-item">
+              <span class="label">Pattern Day Trader</span>
+              <span class="value">{{ account.pattern_day_trader ? 'Yes' : 'No' }}</span>
+            </div>
+            <div class="setting-item">
+              <span class="label">Trading Blocked</span>
+              <span class="value">{{ account.trading_blocked ? 'Yes' : 'No' }}</span>
+            </div>
+            <div class="setting-item">
+              <span class="label">Account Type</span>
+              <span class="value">Paper Trading</span>
+            </div>
           </div>
         </div>
       } @else if (fetchState().errorResOrException) {
@@ -71,7 +76,12 @@ import { fetchFnWithState } from '../../utils/fetch-rx';
     }
     .settings-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .settings-column {
+      display: flex;
+      flex-direction: column;
       gap: 16px;
     }
     .setting-item {
@@ -103,12 +113,14 @@ import { fetchFnWithState } from '../../utils/fetch-rx';
 export class SettingsComponent implements OnInit {
   private alpacaService = inject(AlpacaService);
 
-  fetchAccount = fetchFnWithState<any>(() => this.alpacaService.getAccount());
+  fetchAccount = fetchFnWithState<AlpacaAccount, AlpacaErrorBody>(() => this.alpacaService.getAccount());
 
   fetchState = computed(() => {
     const { prefetchOrBusy, okRes, errorRes, errorResOrException } = this.fetchAccount.state();
     return { prefetchOrBusy, okRes, errorRes, errorResOrException };
   });
+
+  account = computed<AlpacaAccount | null>(() => this.fetchState().okRes?.body ?? null);
 
   ngOnInit(): void {
     this.fetchAccount();
