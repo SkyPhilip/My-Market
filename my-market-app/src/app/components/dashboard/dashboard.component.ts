@@ -1,7 +1,9 @@
-import { Component, OnInit, signal, inject } from '@angular/core';
+import { Component, OnInit, computed, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpResponse } from '@angular/common/http';
 import { AlpacaService } from '../../services/alpaca.service';
 import { ChartComponent } from '../chart/chart.component';
+import { fetchFnWithState } from '../../utils/fetch-rx';
 import { LineData, Time } from 'lightweight-charts';
 
 interface IndexCard {
@@ -12,7 +14,6 @@ interface IndexCard {
   changePercent: number | null;
   chartData: LineData<Time>[];
   color: string;
-  loaded: boolean;
 }
 
 @Component({
@@ -22,6 +23,11 @@ interface IndexCard {
   template: `
     <div class="dashboard">
       <h2>Market Overview</h2>
+      @if (summaryState().prefetchOrBusy) {
+        <p class="loading">Loading market data...</p>
+      } @else if (summaryState().errorResOrException) {
+        <p class="loading">Failed to load market data. <button (click)="fetchSummary()">Retry</button></p>
+      }
       <div class="index-cards">
         @for (card of indices(); track card.symbol) {
           <div class="index-card">
@@ -38,7 +44,7 @@ interface IndexCard {
                     ({{ card.changePercent! >= 0 ? '+' : '' }}{{ card.changePercent | number:'1.2-2' }}%)
                   </span>
                 }
-              } @else if (card.loaded) {
+              } @else if (!summaryState().prefetchOrBusy) {
                 <span class="loading">No data available</span>
               } @else {
                 <span class="loading">Loading...</span>
@@ -112,60 +118,66 @@ interface IndexCard {
 export class DashboardComponent implements OnInit {
   private alpacaService = inject(AlpacaService);
 
-  readonly indices = signal<IndexCard[]>([
-    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#4a9eff', loaded: false },
-    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#28a745', loaded: false },
-    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#ffc107', loaded: false }
-  ]);
+  private static readonly SYMBOLS = ['DIA', 'SPY', 'QQQ'] as const;
+  private static readonly CARD_DEFAULTS: IndexCard[] = [
+    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#4a9eff' },
+    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#28a745' },
+    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#ffc107' },
+  ];
+
+  readonly indices = signal<IndexCard[]>(DashboardComponent.CARD_DEFAULTS);
+
+  fetchSummary = fetchFnWithState<any>(() => this.alpacaService.getMarketSummary());
+
+  fetchBars = fetchFnWithState<any, any, string>((symbol) => {
+    const today = new Date().toISOString().split('T')[0];
+    return this.alpacaService.getBars(symbol, '5Min', today, today);
+  });
+
+  summaryState = computed(() => {
+    const { prefetchOrBusy, okRes, errorResOrException } = this.fetchSummary.state();
+    return { prefetchOrBusy, okRes, errorResOrException };
+  });
 
   ngOnInit(): void {
     this.loadMarketSummary();
     this.loadCharts();
   }
 
-  private loadMarketSummary(): void {
-    this.alpacaService.getMarketSummary().subscribe({
-      next: (summary) => {
-        console.log('Market summary received:', summary);
-        this.indices.update(cards => cards.map(card => {
-          const item = summary.find(i => i.symbol === card.symbol);
-          if (item) {
-            return { ...card, currentPrice: item.currentPrice, change: item.change, changePercent: item.changePercent, loaded: true };
-          }
-          return card;
-        }));
-      },
-      error: (err) => {
-        console.error('Market summary error:', err);
-        this.indices.update(cards => cards.map(card => ({ ...card, loaded: true })));
-      }
-    });
+  private async loadMarketSummary(): Promise<void> {
+    const result = await this.fetchSummary();
+    if (result.okRes) {
+      const snapshots = (result.okRes as HttpResponse<any>).body;
+      this.indices.update(cards => cards.map(card => {
+        const snap = snapshots[card.symbol];
+        if (!snap) return card;
+        const currentPrice = snap.latestTrade?.p ?? snap.minuteBar?.c ?? null;
+        const prevClose = snap.prevDailyBar?.c ?? null;
+        const change = currentPrice && prevClose ? +(currentPrice - prevClose).toFixed(2) : null;
+        const changePercent = currentPrice && prevClose ? +((change! / prevClose) * 100).toFixed(2) : null;
+        return { ...card, currentPrice, change, changePercent };
+      }));
+    }
   }
 
-  private loadCharts(): void {
-    const today = new Date().toISOString().split('T')[0];
-    this.indices().forEach(card => {
-      this.alpacaService.getBars(card.symbol, '5Min', today, today).subscribe({
-        next: (bars) => {
-          console.log(`Bars received for ${card.symbol}:`, bars.length);
-          const chartData = bars.map(bar => ({
-            time: Math.floor(new Date(bar.time).getTime() / 1000) as Time,
-            value: bar.close
-          }));
-          this.indices.update(cards => cards.map(c => {
-            if (c.symbol !== card.symbol) return c;
-            const updates: Partial<IndexCard> = { chartData };
-            if (c.currentPrice === null && bars.length > 0) {
-              updates.currentPrice = bars[bars.length - 1].close;
-              updates.loaded = true;
-            }
-            return { ...c, ...updates };
-          }));
-        },
-        error: (err) => {
-          console.error(`Bars error for ${card.symbol}:`, err);
-        }
-      });
-    });
+  private async loadCharts(): Promise<void> {
+    for (const card of this.indices()) {
+      const result = await this.fetchBars(card.symbol);
+      if (result.okRes) {
+        const rawBars = (result.okRes as HttpResponse<any>).body?.bars || [];
+        const chartData = rawBars.map((bar: any) => ({
+          time: Math.floor(new Date(bar.t).getTime() / 1000) as Time,
+          value: bar.c
+        }));
+        this.indices.update(cards => cards.map(c => {
+          if (c.symbol !== card.symbol) return c;
+          const updates: Partial<IndexCard> = { chartData };
+          if (c.currentPrice === null && rawBars.length > 0) {
+            updates.currentPrice = rawBars[rawBars.length - 1].c;
+          }
+          return { ...c, ...updates };
+        }));
+      }
+    }
   }
 }
