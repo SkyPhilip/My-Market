@@ -1,13 +1,14 @@
-import { Component, ChangeDetectorRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, computed, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { HttpResponse } from '@angular/common/http';
 import { AuthService } from '../../services/auth.service';
+import { fetchFnWithState } from '../../utils/fetch-rx';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule],
   template: `
     <div class="login-container">
       <div class="login-card">
@@ -24,7 +25,7 @@ import { AuthService } from '../../services/auth.service';
               name="keyId"
               required
               placeholder="Your Alpaca API Key"
-              [disabled]="loading"
+              [disabled]="fetchState().prefetchOrBusy && !fetchState().nascent"
             />
           </div>
 
@@ -37,16 +38,26 @@ import { AuthService } from '../../services/auth.service';
               name="secretKey"
               required
               placeholder="Your Alpaca Secret Key"
-              [disabled]="loading"
+              [disabled]="fetchState().prefetchOrBusy && !fetchState().nascent"
             />
           </div>
 
-          @if (errorMessage) {
-            <div class="error-message">{{ errorMessage }}</div>
+          @if (fetchState().errorRes; as errorRes) {
+            <div class="error-message">
+              @if (errorRes.status === 401 || errorRes.status === 403) {
+                Invalid API Key or Secret. Please check your credentials and try again.
+              } @else {
+                Unable to connect. Please try again later.
+              }
+            </div>
           }
 
-          <button type="submit" [disabled]="loading || !keyId || !secretKey">
-            {{ loading ? 'Connecting...' : 'Log In' }}
+          @if (fetchState().exception) {
+            <div class="error-message">Unable to connect. Please try again later.</div>
+          }
+
+          <button type="submit" [disabled]="(fetchState().prefetchOrBusy && !fetchState().nascent) || !keyId || !secretKey">
+            {{ (fetchState().prefetchOrBusy && !fetchState().nascent) ? 'Connecting...' : 'Log In' }}
           </button>
         </form>
       </div>
@@ -136,29 +147,32 @@ import { AuthService } from '../../services/auth.service';
 export class LoginComponent {
   keyId = '';
   secretKey = '';
-  loading = false;
-  errorMessage = '';
 
-  constructor(private authService: AuthService, private router: Router, private cdr: ChangeDetectorRef) {}
+  private authService = inject(AuthService);
+  private router = inject(Router);
 
-  onSubmit(): void {
-    this.loading = true;
-    this.errorMessage = '';
+  fetch = fetchFnWithState<any, any, { keyId: string; secretKey: string }>((credentials) =>
+    this.authService.login(credentials.keyId, credentials.secretKey)
+  );
 
-    this.authService.login(this.keyId, this.secretKey).subscribe({
-      next: () => {
-        this.loading = false;
-        this.router.navigate(['/dashboard']);
-      },
-      error: (err) => {
-        this.loading = false;
-        if (err.status === 401) {
-          this.errorMessage = 'Invalid API Key or Secret. Please check your credentials and try again.';
-        } else {
-          this.errorMessage = err.error?.error || 'Unable to connect. Please try again later.';
-        }
-        this.cdr.detectChanges();
-      }
-    });
+  fetchState = computed(() => {
+    const { nascent, prefetchOrBusy, okRes, errorRes, errorResOrException, busy, exception } = this.fetch.state();
+    return {
+      nascent,
+      prefetchOrBusy,
+      busy,
+      okRes,
+      errorRes: errorRes as HttpResponse<any> | undefined,
+      errorResOrException,
+      exception,
+    };
+  });
+
+  async onSubmit(): Promise<void> {
+    const result = await this.fetch({ keyId: this.keyId, secretKey: this.secretKey });
+    if (result.okRes) {
+      this.authService.storeCredentials(this.keyId, this.secretKey);
+      this.router.navigate(['/dashboard']);
+    }
   }
 }

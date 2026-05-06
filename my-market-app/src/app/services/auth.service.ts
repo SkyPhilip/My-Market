@@ -1,6 +1,6 @@
-import { Injectable, signal, computed } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable, tap, catchError, throwError } from 'rxjs';
+import { Injectable, signal } from '@angular/core';
+import { HttpClient, HttpResponse } from '@angular/common/http';
+import { Observable } from 'rxjs';
 import { Router } from '@angular/router';
 
 @Injectable({ providedIn: 'root' })
@@ -23,25 +23,20 @@ export class AuthService {
     return null;
   }
 
-  login(keyId: string, secretKey: string): Observable<any> {
-    console.log('AuthService: attempting login...');
-    return this.http.get('https://paper-api.alpaca.markets/v2/account', {
+  login(keyId: string, secretKey: string): Observable<HttpResponse<any>> {
+    return this.http.get<any>('https://paper-api.alpaca.markets/v2/account', {
+      observe: 'response',
       headers: {
         'APCA-API-KEY-ID': keyId,
         'APCA-API-SECRET-KEY': secretKey
       }
-    }).pipe(
-      tap((response) => {
-        console.log('AuthService: login successful', response);
-        sessionStorage.setItem('alpaca_key_id', keyId);
-        sessionStorage.setItem('alpaca_secret_key', secretKey);
-        this._isAuthenticated.set(true);
-      }),
-      catchError((err) => {
-        console.error('AuthService: login failed', err);
-        return throwError(() => err);
-      })
-    );
+    });
+  }
+
+  storeCredentials(keyId: string, secretKey: string): void {
+    sessionStorage.setItem('alpaca_key_id', keyId);
+    sessionStorage.setItem('alpaca_secret_key', secretKey);
+    this._isAuthenticated.set(true);
   }
 
   logout(): void {
