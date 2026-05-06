@@ -13,15 +13,13 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
   return next(req).pipe(
     catchError(error => {
       console.log('ErrorInterceptor caught:', req.url, 'status:', error.status, 'body:', error.error);
-      // Don't show toast for login 401s — handled inline by LoginComponent
-      const isLoginRequest = req.url.includes('/api/login');
+      const isLoginRequest = req.url.includes('/v2/account') && !authService.isAuthenticated;
 
       if (error.status === 401 && !isLoginRequest) {
-        console.log('ErrorInterceptor: session expired, redirecting to login');
-        authService.setAuthenticated(false);
-        router.navigate(['/login']);
+        console.log('ErrorInterceptor: credentials invalid, redirecting to login');
+        authService.logout();
       } else if (!isLoginRequest) {
-        const message = error.error?.error || 'An unexpected error occurred. Please try again.';
+        const message = error.error?.message || 'An unexpected error occurred. Please try again.';
         console.log('ErrorInterceptor: showing notification:', message);
         notificationService.showError(message);
       }

@@ -74,6 +74,6 @@ export class HeaderComponent {
   }
 
   onLogout(): void {
-    this.authService.logout().subscribe();
+    this.authService.logout();
   }
 }
