@@ -51,3 +51,22 @@ export interface AlpacaErrorBody {
   message: string;
   code?: number;
 }
+
+export interface AlpacaWatchlistAsset {
+  id: string;
+  class: string;
+  exchange: string;
+  symbol: string;
+  name: string;
+  status: string;
+  tradable: boolean;
+}
+
+export interface AlpacaWatchlist {
+  id: string;
+  account_id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  assets: AlpacaWatchlistAsset[];
+}

@@ -6,6 +6,7 @@ import {
   AlpacaBarsResponse,
   AlpacaClock,
   AlpacaSnapshotsResponse,
+  AlpacaWatchlist,
 } from '../models/alpaca.models';
 
 @Injectable({ providedIn: 'root' })
@@ -43,5 +44,25 @@ export class AlpacaService {
       observe: 'response',
       params: { symbols: symbols.join(','), feed: 'iex' }
     });
+  }
+
+  getWatchlists(): Observable<HttpResponse<AlpacaWatchlist[]>> {
+    return this.http.get<AlpacaWatchlist[]>(`${this.baseUrl}/watchlists`, { observe: 'response' });
+  }
+
+  getWatchlist(id: string): Observable<HttpResponse<AlpacaWatchlist>> {
+    return this.http.get<AlpacaWatchlist>(`${this.baseUrl}/watchlists/${id}`, { observe: 'response' });
+  }
+
+  createWatchlist(name: string, symbols: string[]): Observable<HttpResponse<AlpacaWatchlist>> {
+    return this.http.post<AlpacaWatchlist>(`${this.baseUrl}/watchlists`, { name, symbols }, { observe: 'response' });
+  }
+
+  addToWatchlist(watchlistId: string, symbol: string): Observable<HttpResponse<AlpacaWatchlist>> {
+    return this.http.post<AlpacaWatchlist>(`${this.baseUrl}/watchlists/${watchlistId}`, { symbol }, { observe: 'response' });
+  }
+
+  removeFromWatchlist(watchlistId: string, symbol: string): Observable<HttpResponse<AlpacaWatchlist>> {
+    return this.http.delete<AlpacaWatchlist>(`${this.baseUrl}/watchlists/${watchlistId}/${symbol}`, { observe: 'response' });
   }
 }

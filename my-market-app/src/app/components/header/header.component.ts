@@ -10,7 +10,7 @@ import { AuthService } from '../../services/auth.service';
   template: `
     <header class="header">
       <div class="header__left">
-        <a class="header__brand" (click)="navigateTo('/dashboard')">My Market App</a>
+        <a class="header__brand" (click)="navigateTo('/dashboard')">Forster Market App</a>
       </div>
       <nav class="header__nav">
         <a class="header__link" (click)="navigateTo('/dashboard')">Dashboard</a>
