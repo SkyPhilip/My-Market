@@ -14,6 +14,7 @@ import { AuthService } from '../../services/auth.service';
       </div>
       <nav class="header__nav">
         <a class="header__link" (click)="navigateTo('/dashboard')">Dashboard</a>
+        <a class="header__link" (click)="navigateTo('/sectors')">Sectors</a>
         <a class="header__link" (click)="navigateTo('/settings')">Settings</a>
         <button class="header__logout" (click)="onLogout()">Logout</button>
       </nav>

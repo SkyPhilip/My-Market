@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, from, of } from 'rxjs';
 import { map, tap, mergeMap, toArray, catchError } from 'rxjs/operators';
-import { FmpProfile, FmpSectorPerformance } from '../models/fmp.models';
+import { FmpProfile, FmpScreenerResult, FmpSectorPerformance } from '../models/fmp.models';
 
 @Injectable({ providedIn: 'root' })
 export class FmpService {
@@ -45,6 +45,20 @@ export class FmpService {
 
   getCachedSector(symbol: string): string | undefined {
     return this.#sectorCache.get(symbol);
+  }
+
+  getAvailableSectors(): Observable<string[]> {
+    return this.http.get<{ sector: string }[]>(`${this.#baseUrl}/available-sectors`, {
+      params: { apikey: this.#apiKey }
+    }).pipe(
+      map(results => results.map(r => r.sector))
+    );
+  }
+
+  getTopBySector(sector: string, limit = 30): Observable<FmpScreenerResult[]> {
+    return this.http.get<FmpScreenerResult[]>(`${this.#baseUrl}/company-screener`, {
+      params: { sector, limit: limit.toString(), apikey: this.#apiKey }
+    });
   }
 
   #loadCacheFromStorage(): void {

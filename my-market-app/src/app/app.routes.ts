@@ -6,5 +6,6 @@ export const routes: Routes = [
   { path: 'login', loadComponent: () => import('./components/login/login.component').then(m => m.LoginComponent) },
   { path: 'dashboard', loadComponent: () => import('./components/dashboard/dashboard.component').then(m => m.DashboardComponent), canActivate: [authGuard] },
   { path: 'settings', loadComponent: () => import('./components/settings/settings.component').then(m => m.SettingsComponent), canActivate: [authGuard] },
+  { path: 'sectors', loadComponent: () => import('./components/sectors/sectors.component').then(m => m.SectorsComponent), canActivate: [authGuard] },
   { path: '**', redirectTo: '/dashboard' }
 ];
