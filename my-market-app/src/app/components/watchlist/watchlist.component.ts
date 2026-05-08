@@ -1,7 +1,6 @@
 import { Component, OnInit, computed, signal, inject, input, WritableSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { AlpacaService } from '../../services/alpaca.service';
 import { FmpService } from '../../services/fmp.service';
@@ -389,7 +388,6 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
   `]
 })
 export class WatchlistComponent implements OnInit {
-  private http = inject(HttpClient);
   private alpacaService = inject(AlpacaService);
   private fmpService = inject(FmpService);
 
@@ -513,12 +511,7 @@ export class WatchlistComponent implements OnInit {
       let rawEntries: WatchlistEntry[] | null = this.loadFromStorage();
 
       if (!rawEntries) {
-        try {
-          const config = await firstValueFrom(this.http.get<Record<string, WatchlistEntry[]>>('watchlists.json'));
-          rawEntries = config?.[this.watchlistName()] ?? [];
-        } catch {
-          rawEntries = [];
-        }
+        rawEntries = [];
       }
 
       const initialSymbols: string[] = [];
