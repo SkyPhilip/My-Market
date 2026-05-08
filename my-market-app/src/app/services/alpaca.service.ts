@@ -33,7 +33,7 @@ export class AlpacaService {
   }
 
   getBars(symbol: string, timeframe = '5Min', start?: string, end?: string): Observable<HttpResponse<AlpacaBarsResponse>> {
-    const params: Record<string, string> = { timeframe, feed: 'iex', limit: '1000' };
+    const params: Record<string, string> = { timeframe, feed: 'sip', limit: '1000' };
     if (start) params['start'] = start;
     if (end) params['end'] = end;
     return this.http.get<AlpacaBarsResponse>(`${this.#dataUrl}/stocks/${symbol}/bars`, { observe: 'response', params });
