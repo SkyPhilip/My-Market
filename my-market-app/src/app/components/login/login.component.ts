@@ -13,7 +13,7 @@ import { AlpacaAccount, AlpacaErrorBody } from '../../models/alpaca.models';
   template: `
     <div class="login-container">
       <div class="login-card">
-        <h1>Forster Market App</h1>
+        <h1>My Market App</h1>
         <p class="subtitle">Enter your Alpaca API credentials to continue</p>
 
         <form (ngSubmit)="onSubmit()" #loginForm="ngForm">

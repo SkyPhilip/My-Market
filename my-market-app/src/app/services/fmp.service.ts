@@ -76,4 +76,9 @@ export class FmpService {
   #saveCacheToStorage(): void {
     sessionStorage.setItem('fmp_sector_cache', JSON.stringify([...this.#sectorCache.entries()]));
   }
+
+  clearCache(): void {
+    this.#sectorCache.clear();
+    sessionStorage.removeItem('fmp_sector_cache');
+  }
 }

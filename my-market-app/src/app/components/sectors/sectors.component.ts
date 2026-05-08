@@ -2,11 +2,20 @@ import { Component, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AccordionGroup, AccordionTrigger, AccordionPanel, AccordionContent } from '@angular/aria/accordion';
 import { firstValueFrom } from 'rxjs';
-import { FmpService } from '../../services/fmp.service';
-import { FmpScreenerResult } from '../../models/fmp.models';
+import { AlpacaService } from '../../services/alpaca.service';
+import { AlpacaSnapshot } from '../../models/alpaca.models';
+import { SECTOR_SYMBOLS } from '../../data/sector-symbols';
+
+interface SectorStock {
+  symbol: string;
+  price: number | null;
+  change: number | null;
+  changePercent: number | null;
+  volume: number;
+}
 
 interface SectorData {
-  companies: FmpScreenerResult[];
+  stocks: SectorStock[];
   totalVolume: number;
   loading: boolean;
   error: boolean;
@@ -39,7 +48,7 @@ interface SectorData {
                   </span>
                   @if (sectorData().get(sector)?.loaded) {
                     <span class="accordion-count">
-                      ({{ sectorData().get(sector)?.companies?.length ?? 0 }})
+                      ({{ sectorData().get(sector)?.stocks?.length ?? 0 }})
                     </span>
                   }
                   <span class="accordion-icon">▸</span>
@@ -51,27 +60,29 @@ interface SectorData {
                     <p class="loading">Loading top securities...</p>
                   } @else if (sectorData().get(sector)?.error) {
                     <p class="loading">Failed to load. <button class="retry-btn" (click)="loadSector(sector)">Retry</button></p>
-                  } @else if (sectorData().get(sector)?.companies?.length) {
+                  } @else if (sectorData().get(sector)?.stocks?.length) {
                     <table class="sector-table">
                       <thead>
                         <tr>
                           <th>Symbol</th>
-                          <th>Name</th>
-                          <th>Industry</th>
                           <th class="right">Price</th>
-                          <th class="right">Market Cap</th>
+                          <th class="right">Change</th>
+                          <th class="right">Change %</th>
                           <th class="right">Volume</th>
                         </tr>
                       </thead>
                       <tbody>
-                        @for (company of sectorData().get(sector)!.companies; track company.symbol) {
+                        @for (stock of sectorData().get(sector)!.stocks; track stock.symbol) {
                           <tr>
-                            <td class="symbol">{{ company.symbol }}</td>
-                            <td class="name">{{ company.companyName }}</td>
-                            <td class="industry">{{ company.industry }}</td>
-                            <td class="right">{{'$'}}{{ company.price | number:'1.2-2' }}</td>
-                            <td class="right">{{ formatMarketCap(company.marketCap) }}</td>
-                            <td class="right">{{ company.volume | number:'1.0-0' }}</td>
+                            <td class="symbol">{{ stock.symbol }}</td>
+                            <td class="right">{{ stock.price !== null ? ('$' + (stock.price | number:'1.2-2')) : '—' }}</td>
+                            <td class="right" [class.positive]="(stock.change ?? 0) >= 0" [class.negative]="(stock.change ?? 0) < 0">
+                              {{ stock.change !== null ? ((stock.change >= 0 ? '+' : '') + (stock.change | number:'1.2-2')) : '—' }}
+                            </td>
+                            <td class="right" [class.positive]="(stock.changePercent ?? 0) >= 0" [class.negative]="(stock.changePercent ?? 0) < 0">
+                              {{ stock.changePercent !== null ? ((stock.changePercent >= 0 ? '+' : '') + (stock.changePercent | number:'1.2-2') + '%') : '—' }}
+                            </td>
+                            <td class="right">{{ stock.volume | number:'1.0-0' }}</td>
                           </tr>
                         }
                       </tbody>
@@ -145,11 +156,6 @@ interface SectorData {
       font-size: 13px;
       font-weight: 400;
     }
-    .accordion-volume {
-      color: #6a7a9b;
-      font-size: 12px;
-      font-weight: 400;
-    }
     .accordion-icon {
       color: #4a9eff;
       font-size: 12px;
@@ -192,15 +198,14 @@ interface SectorData {
       font-weight: 600;
       color: #4a9eff;
     }
-    .sector-table .name {
-      color: #a0a0b0;
-    }
-    .sector-table .industry {
-      color: #8892b0;
-      font-size: 12px;
-    }
     .sector-table .right {
       text-align: right;
+    }
+    .sector-table .positive {
+      color: #28a745;
+    }
+    .sector-table .negative {
+      color: #dc3545;
     }
     .retry-btn {
       background: #4a9eff;
@@ -214,7 +219,7 @@ interface SectorData {
   `]
 })
 export class SectorsComponent implements OnInit {
-  private fmpService = inject(FmpService);
+  private alpacaService = inject(AlpacaService);
 
   sectors = signal<string[]>([]);
   loadingSectors = signal(true);
@@ -222,9 +227,9 @@ export class SectorsComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     try {
-      const result = await firstValueFrom(this.fmpService.getAvailableSectors());
-      this.sectors.set(result ?? []);
-      await Promise.all((result ?? []).map(sector => this.loadSector(sector)));
+      const sectorNames = Object.keys(SECTOR_SYMBOLS);
+      this.sectors.set(sectorNames);
+      await Promise.all(sectorNames.map(sector => this.loadSector(sector)));
       this.#sortSectorsByVolume();
     } catch {
       this.sectors.set([]);
@@ -242,33 +247,42 @@ export class SectorsComponent implements OnInit {
   async loadSector(sector: string): Promise<void> {
     this.sectorData.update(map => {
       const updated = new Map(map);
-      updated.set(sector, { companies: [], totalVolume: 0, loading: true, error: false, loaded: false });
+      updated.set(sector, { stocks: [], totalVolume: 0, loading: true, error: false, loaded: false });
       return updated;
     });
 
     try {
-      const companies = (await firstValueFrom(this.fmpService.getTopBySector(sector))) ?? [];
-      companies.sort((a, b) => b.volume - a.volume);
-      const totalVolume = companies.reduce((sum, c) => sum + c.volume, 0);
+      const symbols = SECTOR_SYMBOLS[sector] ?? [];
+      const result = await firstValueFrom(this.alpacaService.getSnapshots(symbols));
+      const snapshots = result?.body ?? {};
+
+      const stocks: SectorStock[] = symbols
+        .map(symbol => {
+          const snap: AlpacaSnapshot | undefined = snapshots[symbol];
+          if (!snap) return { symbol, price: null, change: null, changePercent: null, volume: 0 };
+          const price = snap.latestTrade?.p ?? snap.dailyBar?.c ?? null;
+          const prevClose = snap.prevDailyBar?.c ?? null;
+          const change = price && prevClose ? +(price - prevClose).toFixed(2) : null;
+          const changePercent = price && prevClose ? +((change! / prevClose) * 100).toFixed(2) : null;
+          const volume = snap.dailyBar?.v ?? 0;
+          return { symbol, price, change, changePercent, volume };
+        })
+        .sort((a, b) => b.volume - a.volume);
+
+      const totalVolume = stocks.reduce((sum, s) => sum + s.volume, 0);
+
       this.sectorData.update(map => {
         const updated = new Map(map);
-        updated.set(sector, { companies, totalVolume, loading: false, error: false, loaded: true });
+        updated.set(sector, { stocks, totalVolume, loading: false, error: false, loaded: true });
         return updated;
       });
     } catch {
       this.sectorData.update(map => {
         const updated = new Map(map);
-        updated.set(sector, { companies: [], totalVolume: 0, loading: false, error: true, loaded: false });
+        updated.set(sector, { stocks: [], totalVolume: 0, loading: false, error: true, loaded: false });
         return updated;
       });
     }
-  }
-
-  formatMarketCap(value: number): string {
-    if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
-    if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
-    if (value >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;
-    return `$${value.toLocaleString()}`;
   }
 
   formatVolume(value: number): string {
