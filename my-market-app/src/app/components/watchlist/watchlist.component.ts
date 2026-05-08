@@ -403,8 +403,8 @@ export class WatchlistComponent implements OnInit {
   watchlistState = computed(() => {
     const snap = this.fetchSnapshots.state();
     return {
-      prefetchOrBusy: this.loading() || snap.busy,
-      errorResOrException: snap.errorResOrException,
+      prefetchOrBusy: this.loading() || (this.symbols().length > 0 && snap.prefetchOrBusy),
+      errorResOrException: this.symbols().length > 0 ? snap.errorResOrException : null,
     };
   });
 
