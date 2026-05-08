@@ -1,0 +1,7 @@
+{
+  "Current Holdings": [
+    { "symbol": "AAPL", "costBasis": 150.00, "shares": 10 },
+    { "symbol": "MSFT", "costBasis": 300.00, "shares": 5 }
+  ],
+  "Watch List": ["GOOGL", "AMZN"]
+}
