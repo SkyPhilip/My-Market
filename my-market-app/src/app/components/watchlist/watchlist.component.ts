@@ -332,6 +332,11 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       display: flex;
       gap: 4px;
       margin-bottom: 16px;
+      position: sticky;
+      top: 49px;
+      z-index: 50;
+      background: #1a1a2e;
+      padding: 8px 0;
     }
     .range-btn {
       background: #0f1a30;
