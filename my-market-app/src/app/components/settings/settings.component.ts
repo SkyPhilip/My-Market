@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { AlpacaService } from '../../services/alpaca.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaAccount, AlpacaErrorBody } from '../../models/alpaca.models';
@@ -8,7 +9,7 @@ import { firstValueFrom } from 'rxjs';
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="settings">
       <h2>Alpaca Account Settings</h2>
@@ -64,6 +65,42 @@ import { firstValueFrom } from 'rxjs';
       } @else if (fetchState().errorResOrException) {
         <p class="loading">Failed to load account information. <button class="retry-btn" (click)="fetchAccount()">Retry</button></p>
       }
+
+      <h2 class="section-title">Chart Settings</h2>
+      <div class="settings-grid single-col">
+        <div class="setting-item">
+          <span class="label">Sell At Drop %</span>
+          <div class="stop-input-group">
+            <input
+              type="number"
+              class="stop-input"
+              [ngModel]="stopDropPercent()"
+              (ngModelChange)="onStopDropChange($event)"
+              min="0"
+              max="100"
+              step="1"
+            />
+            <span class="stop-suffix">%</span>
+          </div>
+        </div>
+        <p class="setting-hint">Draws a red dashed "Sell" line on charts at this % below the range high. Set to 0 to disable.</p>
+        <div class="setting-item">
+          <span class="label">Buy At Rise %</span>
+          <div class="stop-input-group">
+            <input
+              type="number"
+              class="stop-input"
+              [ngModel]="buyAtPercent()"
+              (ngModelChange)="onBuyAtChange($event)"
+              min="0"
+              max="100"
+              step="1"
+            />
+            <span class="stop-suffix">%</span>
+          </div>
+        </div>
+        <p class="setting-hint">Draws a green dashed "Buy" line on charts at this % above the range low. Set to 0 to disable.</p>
+      </div>
 
       <h2 class="section-title">Market Holidays ({{ holidayYear() }})</h2>
       @if (holidaysLoading()) {
@@ -166,6 +203,38 @@ import { firstValueFrom } from 'rxjs';
       min-width: 80px;
       text-align: right;
     }
+    .single-col {
+      grid-template-columns: 1fr;
+      max-width: 400px;
+    }
+    .stop-input-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .stop-input {
+      background: #0f1a30;
+      border: 1px solid #2a3a5e;
+      border-radius: 6px;
+      color: #e0e0e0;
+      padding: 8px 12px;
+      font-size: 14px;
+      width: 80px;
+      outline: none;
+      text-align: right;
+    }
+    .stop-input:focus {
+      border-color: #4a9eff;
+    }
+    .stop-suffix {
+      color: #8892b0;
+      font-size: 14px;
+    }
+    .setting-hint {
+      color: #5a6a8a;
+      font-size: 12px;
+      margin: -4px 0 0;
+    }
   `]
 })
 export class SettingsComponent implements OnInit {
@@ -183,6 +252,39 @@ export class SettingsComponent implements OnInit {
   holidays = signal<{ date: string; displayDate: string; name: string; dayOfWeek: string; past: boolean }[]>([]);
   holidaysLoading = signal(false);
   holidayYear = signal(new Date().getFullYear());
+  stopDropPercent = signal(SettingsComponent.loadStopDropPercent());
+  buyAtPercent = signal(SettingsComponent.loadBuyAtPercent());
+
+  static readonly STOP_DROP_KEY = 'sell_at_percent';
+  static readonly STOP_DROP_DEFAULT = 10;
+  static readonly BUY_AT_KEY = 'buy_at_percent';
+  static readonly BUY_AT_DEFAULT = 10;
+
+  static loadStopDropPercent(): number {
+    const raw = localStorage.getItem(SettingsComponent.STOP_DROP_KEY);
+    if (raw === null) return SettingsComponent.STOP_DROP_DEFAULT;
+    const val = parseFloat(raw);
+    return isNaN(val) ? SettingsComponent.STOP_DROP_DEFAULT : val;
+  }
+
+  static loadBuyAtPercent(): number {
+    const raw = localStorage.getItem(SettingsComponent.BUY_AT_KEY);
+    if (raw === null) return SettingsComponent.BUY_AT_DEFAULT;
+    const val = parseFloat(raw);
+    return isNaN(val) ? SettingsComponent.BUY_AT_DEFAULT : val;
+  }
+
+  onStopDropChange(value: number): void {
+    const clamped = Math.max(0, Math.min(100, value ?? 0));
+    this.stopDropPercent.set(clamped);
+    localStorage.setItem(SettingsComponent.STOP_DROP_KEY, String(clamped));
+  }
+
+  onBuyAtChange(value: number): void {
+    const clamped = Math.max(0, Math.min(100, value ?? 0));
+    this.buyAtPercent.set(clamped);
+    localStorage.setItem(SettingsComponent.BUY_AT_KEY, String(clamped));
+  }
 
   private static readonly KNOWN_HOLIDAYS: Record<string, string> = {
     '01-01': "New Year's Day",

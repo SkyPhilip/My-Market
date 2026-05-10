@@ -32,6 +32,7 @@ interface IndexCard {
   change: number | null;
   changePercent: number | null;
   chartData: LineData<Time>[];
+  maData: LineData<Time>[];
   color: string;
 }
 
@@ -78,7 +79,7 @@ interface IndexCard {
                 <span class="loading">Loading...</span>
               }
             </div>
-            <app-chart [data]="card.chartData" [color]="card.color"></app-chart>
+            <app-chart [data]="card.chartData" [color]="card.color" [maData]="card.maData"></app-chart>
           </div>
         }
       </div>
@@ -184,9 +185,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private static readonly SYMBOLS = ['DIA', 'SPY', 'QQQ'] as const;
   private static readonly CARD_DEFAULTS: IndexCard[] = [
-    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#4a9eff' },
-    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#28a745' },
-    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], color: '#ffc107' },
+    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], color: '#4a9eff' },
+    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], color: '#28a745' },
+    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], color: '#ffc107' },
   ];
 
   readonly indices: WritableSignal<IndexCard[]> = signal<IndexCard[]>(DashboardComponent.CARD_DEFAULTS);
@@ -274,6 +275,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
           if (c.currentPrice === null && rawBars.length > 0) {
             updates.currentPrice = rawBars[rawBars.length - 1].c;
           }
+          // Compute 50-period moving average (cumulative for first 49 points)
+          const maData: LineData<Time>[] = [];
+          const period = 50;
+          if (chartData.length > 0) {
+            let sum = 0;
+            for (let i = 0; i < chartData.length; i++) {
+              sum += chartData[i].value;
+              if (i >= period) {
+                sum -= chartData[i - period].value;
+                maData.push({ time: chartData[i].time, value: +(sum / period).toFixed(2) });
+              } else {
+                maData.push({ time: chartData[i].time, value: +(sum / (i + 1)).toFixed(2) });
+              }
+            }
+          }
+          updates.maData = maData;
           return { ...c, ...updates };
         }));
       }
