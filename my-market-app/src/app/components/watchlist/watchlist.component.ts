@@ -8,6 +8,7 @@ import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaErrorBody, AlpacaBarsResponse, AlpacaSnapshotsResponse, AlpacaSnapshot } from '../../models/alpaca.models';
 import { ChartComponent } from '../chart/chart.component';
 import { SettingsComponent } from '../settings/settings.component';
+import { NotificationService } from '../../services/notification.service';
 import { LineData, Time } from 'lightweight-charts';
 
 type TimeRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'All';
@@ -45,12 +46,14 @@ interface WatchlistRow {
   totalGainLossPercent: number | null;
   chartData: LineData<Time>[];
   chartLoading: boolean;
+  volume: number | null;
   stopPrice: number | null;
   buyPrice: number | null;
   maData: LineData<Time>[];
+  volumeData: LineData<Time>[];
 }
 
-type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'totalGainLossPercent';
+type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'totalGainLossPercent';
 type SortDirection = 'asc' | 'desc';
 
 type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number };
@@ -64,14 +67,19 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       <h2>{{ title() }}</h2>
       <div class="watchlist-actions">
         <form class="watchlist-form" (submit)="addSymbol($event)">
-          <input
-            type="text"
-            [(ngModel)]="newSymbol"
-            name="symbol"
-            placeholder="Add ticker (e.g. AAPL)"
-            class="watchlist-input"
-            [disabled]="adding()"
-          />
+          <div class="input-wrapper">
+            <input
+              type="text"
+              [(ngModel)]="newSymbol"
+              name="symbol"
+              placeholder="Add ticker (e.g. AAPL)"
+              class="watchlist-input"
+              [disabled]="adding()"
+            />
+            @if (newSymbol) {
+              <button type="button" class="clear-btn" (click)="clearInput()">✕</button>
+            }
+          </div>
           <button type="submit" class="watchlist-btn add-btn" [disabled]="!newSymbol.trim() || adding()">Add</button>
         </form>
         <div class="io-buttons">
@@ -82,6 +90,9 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
           </label>
         </div>
       </div>
+      @if (addError()) {
+        <p class="add-error">{{ addError() }}</p>
+      }
       <div class="range-selector">
         @for (range of timeRanges; track range) {
           <button
@@ -105,6 +116,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
               <th class="sortable" (click)="sortBy('price')">Price <span class="sort-icon">{{ sortIcon('price') }}</span></th>
               <th class="sortable" (click)="sortBy('change')">Change <span class="sort-icon">{{ sortIcon('change') }}</span></th>
               <th class="sortable" (click)="sortBy('changePercent')">Change % <span class="sort-icon">{{ sortIcon('changePercent') }}</span></th>
+              <th class="sortable" (click)="sortBy('volume')">Volume <span class="sort-icon">{{ sortIcon('volume') }}</span></th>
               @if (hasCostBasis()) {
                 <th class="sortable" (click)="sortBy('shares')">Shares <span class="sort-icon">{{ sortIcon('shares') }}</span></th>
                 <th class="sortable" (click)="sortBy('costBasis')">Cost <span class="sort-icon">{{ sortIcon('costBasis') }}</span></th>
@@ -131,6 +143,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                 <td class="change" [class.positive]="(row.changePercent ?? 0) >= 0" [class.negative]="(row.changePercent ?? 0) < 0">
                   {{ row.changePercent !== null ? ((row.changePercent >= 0 ? '+' : '') + (row.changePercent | number:'1.2-2') + '%') : '—' }}
                 </td>
+                <td class="volume">{{ formatVolume(row.volume) }}</td>
                 @if (hasCostBasis()) {
                   <td class="shares">{{ row.shares !== null ? (row.shares | number:'1.0-4') : '—' }}</td>
                   <td class="price">{{ row.costBasis !== null ? ('$' + (row.costBasis | number:'1.2-2')) : '—' }}</td>
@@ -153,11 +166,11 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
               </tr>
               @if (expandedSymbols().has(row.symbol)) {
                 <tr class="chart-row">
-                  <td [attr.colspan]="hasCostBasis() ? 15 : 7">
+                  <td [attr.colspan]="hasCostBasis() ? 16 : 8">
                     @if (row.chartLoading) {
                       <p class="chart-loading">Loading chart...</p>
                     } @else {
-                      <app-chart [data]="row.chartData" [color]="'#4a9eff'" [stopPrice]="row.stopPrice" [buyPrice]="row.buyPrice" [maData]="row.maData"></app-chart>
+                      <app-chart [data]="row.chartData" [color]="'#4a9eff'" [stopPrice]="row.stopPrice" [buyPrice]="row.buyPrice" [maData]="row.maData" [volumeData]="row.volumeData"></app-chart>
                     }
                   </td>
                 </tr>
@@ -167,7 +180,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
           @if (hasCostBasis()) {
             <tfoot>
               <tr class="summary-row">
-                <td colspan="6">Portfolio Totals</td>
+                <td colspan="7">Portfolio Totals</td>
                 <td></td>
                 <td></td>
                 <td class="price">{{'$'}}{{ portfolioTotalCost() | number:'1.2-2' }}</td>
@@ -206,6 +219,33 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
     .watchlist-form {
       display: flex;
       gap: 8px;
+    }
+    .input-wrapper {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+    .input-wrapper .watchlist-input {
+      padding-right: 28px;
+    }
+    .clear-btn {
+      position: absolute;
+      right: 6px;
+      background: transparent;
+      border: none;
+      color: #8892b0;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 2px 4px;
+      line-height: 1;
+    }
+    .clear-btn:hover {
+      color: #dc3545;
+    }
+    .add-error {
+      color: #dc3545;
+      font-size: 13px;
+      margin: -8px 0 12px;
     }
     .watchlist-actions {
       display: flex;
@@ -282,7 +322,6 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       border-collapse: collapse;
       background: #16213e;
       border-radius: 10px;
-      overflow: hidden;
       border: 1px solid #2a3a5e;
     }
     .watchlist-table th {
@@ -293,6 +332,9 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       font-weight: 600;
       border-bottom: 1px solid #2a3a5e;
       background: #0f1a30;
+      position: sticky;
+      top: 90px;
+      z-index: 40;
     }
     .watchlist-table th.sortable {
       cursor: pointer;
@@ -386,6 +428,10 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       color: #a0a0b0;
       font-size: 13px;
     }
+    .volume {
+      color: #8892b0;
+      font-size: 13px;
+    }
     .summary-row td {
       padding: 12px 16px;
       font-weight: 700;
@@ -399,6 +445,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
 export class WatchlistComponent implements OnInit {
   private alpacaService = inject(AlpacaService);
   private fmpService = inject(FmpService);
+  private notificationService = inject(NotificationService);
 
   title = input.required<string>();
   watchlistName = input.required<string>();
@@ -420,6 +467,7 @@ export class WatchlistComponent implements OnInit {
   watchlistRows: WritableSignal<WatchlistRow[]> = signal<WatchlistRow[]>([]);
   newSymbol = '';
   adding = signal(false);
+  addError = signal<string | null>(null);
 
   private costBasisMap = new Map<string, number>();
   private sharesMap = new Map<string, number>();
@@ -470,6 +518,19 @@ export class WatchlistComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadWatchlist();
+  }
+
+  formatVolume(v: number | null): string {
+    if (v === null) return '—';
+    if (v >= 1_000_000_000) return (v / 1_000_000_000).toFixed(1) + 'B';
+    if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + 'M';
+    if (v >= 1_000) return (v / 1_000).toFixed(1) + 'K';
+    return v.toString();
+  }
+
+  clearInput(): void {
+    this.newSymbol = '';
+    this.addError.set(null);
   }
 
   sortBy(column: SortColumn): void {
@@ -572,7 +633,8 @@ export class WatchlistComponent implements OnInit {
         const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
-        return { symbol, name: symbol, sector, price, change, changePercent, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, stopPrice: null, buyPrice: null, maData: [] };
+        const volume = snap?.dailyBar?.v ?? null;
+        return { symbol, name: symbol, sector, price, change, changePercent, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, stopPrice: null, buyPrice: null, maData: [], volumeData: [] };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -592,6 +654,7 @@ export class WatchlistComponent implements OnInit {
     }
 
     this.adding.set(true);
+    this.addError.set(null);
     try {
       const [snapResult] = await Promise.all([
         firstValueFrom(this.alpacaService.getSnapshots([symbol])),
@@ -600,13 +663,20 @@ export class WatchlistComponent implements OnInit {
           : firstValueFrom(this.fmpService.getProfiles([symbol])),
       ]);
       const snap = snapResult?.body?.[symbol];
-      const price = snap?.latestTrade?.p ?? snap?.minuteBar?.c ?? null;
+      if (!snap) {
+        const msg = `"${symbol}" is not a valid ticker symbol.`;
+        this.addError.set(msg);
+        this.notificationService.showError(msg);
+        return;
+      }
+      const price = snap.latestTrade?.p ?? snap.minuteBar?.c ?? null;
       const prevClose = snap?.prevDailyBar?.c ?? null;
       const change = price && prevClose ? +(price - prevClose).toFixed(2) : null;
       const changePercent = price && prevClose ? +((change! / prevClose) * 100).toFixed(2) : null;
       const sector = this.fmpService.getCachedSector(symbol) ?? '\u2014';
+      const volume = snap?.dailyBar?.v ?? null;
       this.symbols.update(s => [...s, symbol]);
-      this.watchlistRows.update(rows => [...rows, { symbol, name: symbol, sector, price, change, changePercent, costBasis: null, shares: null, totalCost: null, marketValue: null, gainLoss: null, gainLossPercent: null, totalGainLoss: null, totalGainLossPercent: null, chartData: [], chartLoading: false, stopPrice: null, buyPrice: null, maData: [] }]);
+      this.watchlistRows.update(rows => [...rows, { symbol, name: symbol, sector, price, change, changePercent, volume, costBasis: null, shares: null, totalCost: null, marketValue: null, gainLoss: null, gainLossPercent: null, totalGainLoss: null, totalGainLossPercent: null, chartData: [], chartLoading: false, stopPrice: null, buyPrice: null, maData: [], volumeData: [] }]);
       this.newSymbol = '';
       this.saveToStorage();
     } finally {
@@ -734,8 +804,13 @@ export class WatchlistComponent implements OnInit {
           }
         }
       }
+      // Build volume data from bars
+      const volumeData: LineData<Time>[] = rawBars.map((bar, i) => ({
+        time: chartData[i].time,
+        value: bar.v
+      }));
       this.watchlistRows.update(rows => rows.map(r =>
-        r.symbol === symbol ? { ...r, chartData, chartLoading: false, stopPrice, buyPrice, maData } : r
+        r.symbol === symbol ? { ...r, chartData, chartLoading: false, stopPrice, buyPrice, maData, volumeData } : r
       ));
     } catch {
       this.watchlistRows.update(rows => rows.map(r =>

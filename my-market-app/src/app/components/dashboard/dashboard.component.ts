@@ -33,6 +33,7 @@ interface IndexCard {
   changePercent: number | null;
   chartData: LineData<Time>[];
   maData: LineData<Time>[];
+  volumeData: LineData<Time>[];
   color: string;
 }
 
@@ -79,7 +80,7 @@ interface IndexCard {
                 <span class="loading">Loading...</span>
               }
             </div>
-            <app-chart [data]="card.chartData" [color]="card.color" [maData]="card.maData"></app-chart>
+            <app-chart [data]="card.chartData" [color]="card.color" [maData]="card.maData" [volumeData]="card.volumeData"></app-chart>
           </div>
         }
       </div>
@@ -185,9 +186,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private static readonly SYMBOLS = ['DIA', 'SPY', 'QQQ'] as const;
   private static readonly CARD_DEFAULTS: IndexCard[] = [
-    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], color: '#4a9eff' },
-    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], color: '#28a745' },
-    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], color: '#ffc107' },
+    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], volumeData: [], color: '#4a9eff' },
+    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], volumeData: [], color: '#28a745' },
+    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], volumeData: [], color: '#ffc107' },
   ];
 
   readonly indices: WritableSignal<IndexCard[]> = signal<IndexCard[]>(DashboardComponent.CARD_DEFAULTS);
@@ -291,6 +292,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
             }
           }
           updates.maData = maData;
+          // Build volume data from bars
+          const volumeData: LineData<Time>[] = rawBars.map((bar, i) => ({
+            time: chartData[i].time,
+            value: bar.v
+          }));
+          updates.volumeData = volumeData;
           return { ...c, ...updates };
         }));
       }

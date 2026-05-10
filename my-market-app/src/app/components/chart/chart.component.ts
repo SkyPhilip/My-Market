@@ -1,5 +1,5 @@
 import { Component, ElementRef, Input, OnChanges, OnDestroy, SimpleChanges, ViewChild, AfterViewInit } from '@angular/core';
-import { createChart, IChartApi, ISeriesApi, IPriceLine, LineData, Time, LineSeries, MouseEventParams, LineStyle, AutoscaleInfo } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, IPriceLine, LineData, Time, LineSeries, HistogramSeries, MouseEventParams, LineStyle, AutoscaleInfo } from 'lightweight-charts';
 
 @Component({
   selector: 'app-chart',
@@ -44,10 +44,12 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() stopPrice: number | null = null;
   @Input() buyPrice: number | null = null;
   @Input() maData: LineData<Time>[] = [];
+  @Input() volumeData: LineData<Time>[] = [];
 
   private chart: IChartApi | null = null;
   private series: ISeriesApi<'Line'> | null = null;
   private maSeries: ISeriesApi<'Line'> | null = null;
+  private volumeSeries: ISeriesApi<'Histogram'> | null = null;
   private sellLine: IPriceLine | null = null;
   private buyLine: IPriceLine | null = null;
 
@@ -62,6 +64,9 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     }
     if (changes['maData'] && this.maSeries) {
       this.maSeries.setData(this.maData);
+    }
+    if (changes['volumeData'] && this.volumeSeries) {
+      this.volumeSeries.setData(this.volumeData);
     }
     if ((changes['stopPrice'] || changes['buyPrice'] || changes['data']) && this.series) {
       this.updatePriceLines();
@@ -160,6 +165,19 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       priceLineVisible: false,
     });
 
+    this.volumeSeries = this.chart.addSeries(HistogramSeries, {
+      color: 'rgba(74, 158, 255, 0.3)',
+      priceFormat: { type: 'volume' },
+      priceScaleId: 'volume',
+      lastValueVisible: false,
+      priceLineVisible: false,
+    });
+    this.chart.priceScale('volume').applyOptions({
+      scaleMargins: { top: 0.8, bottom: 0 },
+      borderVisible: false,
+      visible: false,
+    });
+
     if (this.data.length) {
       this.series.setData(this.data);
       this.chart.timeScale().fitContent();
@@ -167,6 +185,10 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
 
     if (this.maData.length) {
       this.maSeries.setData(this.maData);
+    }
+
+    if (this.volumeData.length) {
+      this.volumeSeries.setData(this.volumeData);
     }
 
     this.updatePriceLines();
