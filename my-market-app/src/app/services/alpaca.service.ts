@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import {
   AlpacaAccount,
   AlpacaBarsResponse,
+  AlpacaCalendarDay,
   AlpacaClock,
   AlpacaSnapshotsResponse,
   AlpacaWatchlist,
@@ -22,6 +23,13 @@ export class AlpacaService {
 
   getClock(): Observable<HttpResponse<AlpacaClock>> {
     return this.http.get<AlpacaClock>(`${this.#baseUrl}/clock`, { observe: 'response' });
+  }
+
+  getCalendar(start: string, end: string): Observable<HttpResponse<AlpacaCalendarDay[]>> {
+    return this.http.get<AlpacaCalendarDay[]>(`${this.#baseUrl}/calendar`, {
+      observe: 'response',
+      params: { start, end }
+    });
   }
 
   getMarketSummary(): Observable<HttpResponse<AlpacaSnapshotsResponse>> {

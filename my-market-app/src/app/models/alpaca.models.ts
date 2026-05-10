@@ -52,6 +52,14 @@ export interface AlpacaErrorBody {
   code?: number;
 }
 
+export interface AlpacaCalendarDay {
+  date: string;
+  open: string;
+  close: string;
+  session_open: string;
+  session_close: string;
+}
+
 export interface AlpacaWatchlistAsset {
   id: string;
   class: string;
