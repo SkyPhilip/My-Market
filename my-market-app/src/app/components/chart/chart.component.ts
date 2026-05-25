@@ -1,5 +1,5 @@
 import { Component, ElementRef, Input, OnChanges, OnDestroy, SimpleChanges, ViewChild, AfterViewInit } from '@angular/core';
-import { createChart, IChartApi, ISeriesApi, IPriceLine, LineData, Time, LineSeries, HistogramSeries, MouseEventParams, LineStyle, AutoscaleInfo } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries, HistogramSeries, MouseEventParams } from 'lightweight-charts';
 
 @Component({
   selector: 'app-chart',
@@ -41,8 +41,6 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @ViewChild('crosshairLabel') crosshairLabel!: ElementRef<HTMLDivElement>;
   @Input() data: LineData<Time>[] = [];
   @Input() color = '#4a9eff';
-  @Input() stopPrice: number | null = null;
-  @Input() buyPrice: number | null = null;
   @Input() maData: LineData<Time>[] = [];
   @Input() volumeData: LineData<Time>[] = [];
 
@@ -50,8 +48,6 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   private series: ISeriesApi<'Line'> | null = null;
   private maSeries: ISeriesApi<'Line'> | null = null;
   private volumeSeries: ISeriesApi<'Histogram'> | null = null;
-  private sellLine: IPriceLine | null = null;
-  private buyLine: IPriceLine | null = null;
 
   ngAfterViewInit(): void {
     this.createChartInstance();
@@ -68,57 +64,6 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     if (changes['volumeData'] && this.volumeSeries) {
       this.volumeSeries.setData(this.volumeData);
     }
-    if ((changes['stopPrice'] || changes['buyPrice'] || changes['data']) && this.series) {
-      this.updatePriceLines();
-    }
-  }
-
-  private updatePriceLines(): void {
-    if (!this.series) return;
-    if (this.sellLine) {
-      this.series.removePriceLine(this.sellLine);
-      this.sellLine = null;
-    }
-    if (this.buyLine) {
-      this.series.removePriceLine(this.buyLine);
-      this.buyLine = null;
-    }
-    if (this.stopPrice !== null) {
-      this.sellLine = this.series.createPriceLine({
-        price: this.stopPrice,
-        color: '#dc3545',
-        lineWidth: 1,
-        lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: 'Sell',
-      });
-    }
-    if (this.buyPrice !== null) {
-      this.buyLine = this.series.createPriceLine({
-        price: this.buyPrice,
-        color: '#28a745',
-        lineWidth: 1,
-        lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: 'Buy',
-      });
-    }
-    const stopVal = this.stopPrice;
-    const buyVal = this.buyPrice;
-    this.series.applyOptions({
-      autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
-        const res = original();
-        if (res !== null && res.priceRange !== null) {
-          if (stopVal !== null) {
-            res.priceRange.minValue = Math.min(res.priceRange.minValue, stopVal);
-          }
-          if (buyVal !== null) {
-            res.priceRange.maxValue = Math.max(res.priceRange.maxValue, buyVal);
-          }
-        }
-        return res;
-      },
-    });
   }
 
   ngOnDestroy(): void {
@@ -190,8 +135,6 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     if (this.volumeData.length) {
       this.volumeSeries.setData(this.volumeData);
     }
-
-    this.updatePriceLines();
 
     this.chart.subscribeCrosshairMove((param: MouseEventParams<Time>) => {
       const label = this.crosshairLabel.nativeElement;

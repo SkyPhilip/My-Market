@@ -7,7 +7,6 @@ import { FmpService } from '../../services/fmp.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaErrorBody, AlpacaBarsResponse, AlpacaSnapshotsResponse, AlpacaSnapshot } from '../../models/alpaca.models';
 import { ChartComponent } from '../chart/chart.component';
-import { SettingsComponent } from '../settings/settings.component';
 import { NotificationService } from '../../services/notification.service';
 import { LineData, Time } from 'lightweight-charts';
 
@@ -47,8 +46,6 @@ interface WatchlistRow {
   chartData: LineData<Time>[];
   chartLoading: boolean;
   volume: number | null;
-  stopPrice: number | null;
-  buyPrice: number | null;
   maData: LineData<Time>[];
   volumeData: LineData<Time>[];
 }
@@ -170,7 +167,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                     @if (row.chartLoading) {
                       <p class="chart-loading">Loading chart...</p>
                     } @else {
-                      <app-chart [data]="row.chartData" [color]="'#4a9eff'" [stopPrice]="row.stopPrice" [buyPrice]="row.buyPrice" [maData]="row.maData" [volumeData]="row.volumeData"></app-chart>
+                      <app-chart [data]="row.chartData" [color]="'#4a9eff'" [maData]="row.maData" [volumeData]="row.volumeData"></app-chart>
                     }
                   </td>
                 </tr>
@@ -634,7 +631,7 @@ export class WatchlistComponent implements OnInit {
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { symbol, name: symbol, sector, price, change, changePercent, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, stopPrice: null, buyPrice: null, maData: [], volumeData: [] };
+        return { symbol, name: symbol, sector, price, change, changePercent, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], volumeData: [] };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -676,7 +673,7 @@ export class WatchlistComponent implements OnInit {
       const sector = this.fmpService.getCachedSector(symbol) ?? '\u2014';
       const volume = snap?.dailyBar?.v ?? null;
       this.symbols.update(s => [...s, symbol]);
-      this.watchlistRows.update(rows => [...rows, { symbol, name: symbol, sector, price, change, changePercent, volume, costBasis: null, shares: null, totalCost: null, marketValue: null, gainLoss: null, gainLossPercent: null, totalGainLoss: null, totalGainLossPercent: null, chartData: [], chartLoading: false, stopPrice: null, buyPrice: null, maData: [], volumeData: [] }]);
+      this.watchlistRows.update(rows => [...rows, { symbol, name: symbol, sector, price, change, changePercent, volume, costBasis: null, shares: null, totalCost: null, marketValue: null, gainLoss: null, gainLossPercent: null, totalGainLoss: null, totalGainLossPercent: null, chartData: [], chartLoading: false, maData: [], volumeData: [] }]);
       this.newSymbol = '';
       this.saveToStorage();
     } finally {
@@ -775,20 +772,6 @@ export class WatchlistComponent implements OnInit {
           };
         }
       });
-      const dropPercent = SettingsComponent.loadStopDropPercent();
-      const buyPercent = SettingsComponent.loadBuyAtPercent();
-      let stopPrice: number | null = null;
-      let buyPrice: number | null = null;
-      if (chartData.length) {
-        if (dropPercent > 0) {
-          const high = Math.max(...chartData.map(d => d.value));
-          stopPrice = +(high * (1 - dropPercent / 100)).toFixed(2);
-        }
-        if (buyPercent > 0) {
-          const low = Math.min(...chartData.map(d => d.value));
-          buyPrice = +(low * (1 + buyPercent / 100)).toFixed(2);
-        }
-      }
       // Compute 50-period moving average (cumulative for first 49 points)
       const maData: LineData<Time>[] = [];
       const period = 50;
@@ -810,7 +793,7 @@ export class WatchlistComponent implements OnInit {
         value: bar.v
       }));
       this.watchlistRows.update(rows => rows.map(r =>
-        r.symbol === symbol ? { ...r, chartData, chartLoading: false, stopPrice, buyPrice, maData, volumeData } : r
+        r.symbol === symbol ? { ...r, chartData, chartLoading: false, maData, volumeData } : r
       ));
     } catch {
       this.watchlistRows.update(rows => rows.map(r =>
