@@ -17,6 +17,39 @@ interface RangeConfig {
   getStart: () => string;
 }
 
+interface VolumeProfileBin {
+  price: number;
+  step: number;
+  volume: number;
+}
+
+function buildVolumeProfile(bars: Array<{ l: number; h: number; c: number; v: number }>, binCount = 24): VolumeProfileBin[] {
+  if (!bars.length) return [];
+
+  const minPrice = Math.min(...bars.map(bar => bar.l));
+  const maxPrice = Math.max(...bars.map(bar => bar.h));
+  const totalVolume = bars.reduce((sum, bar) => sum + bar.v, 0);
+
+  if (!(maxPrice > minPrice)) {
+    return [{ price: minPrice, step: 1, volume: totalVolume }];
+  }
+
+  const step = (maxPrice - minPrice) / binCount;
+  const bins = Array.from({ length: binCount }, () => 0);
+
+  for (const bar of bars) {
+    const value = bar.c;
+    const index = Math.min(binCount - 1, Math.max(0, Math.floor((value - minPrice) / step)));
+    bins[index] += bar.v;
+  }
+
+  return bins.map((volume, index) => ({
+    price: minPrice + step * (index + 0.5),
+    step,
+    volume,
+  }));
+}
+
 const RANGE_CONFIGS: Record<TimeRange, RangeConfig> = {
   '1D':  { timeframe: '5Min',   getStart: () => new Date().toISOString().split('T')[0] },
   '5D':  { timeframe: '15Min',  getStart: () => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; } },
@@ -48,6 +81,7 @@ interface WatchlistRow {
   volume: number | null;
   maData: LineData<Time>[];
   volumeData: LineData<Time>[];
+  volumeProfileData: VolumeProfileBin[];
 }
 
 type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'totalGainLossPercent';
@@ -167,7 +201,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                     @if (row.chartLoading) {
                       <p class="chart-loading">Loading chart...</p>
                     } @else {
-                      <app-chart [data]="row.chartData" [color]="'#4a9eff'" [maData]="row.maData" [volumeData]="row.volumeData"></app-chart>
+                      <app-chart [data]="row.chartData" [color]="'#4a9eff'" [maData]="row.maData" [volumeData]="row.volumeData" [volumeProfileData]="row.volumeProfileData"></app-chart>
                     }
                   </td>
                 </tr>
@@ -631,7 +665,7 @@ export class WatchlistComponent implements OnInit {
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { symbol, name: symbol, sector, price, change, changePercent, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], volumeData: [] };
+        return { symbol, name: symbol, sector, price, change, changePercent, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], volumeData: [], volumeProfileData: [] };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -673,7 +707,7 @@ export class WatchlistComponent implements OnInit {
       const sector = this.fmpService.getCachedSector(symbol) ?? '\u2014';
       const volume = snap?.dailyBar?.v ?? null;
       this.symbols.update(s => [...s, symbol]);
-      this.watchlistRows.update(rows => [...rows, { symbol, name: symbol, sector, price, change, changePercent, volume, costBasis: null, shares: null, totalCost: null, marketValue: null, gainLoss: null, gainLossPercent: null, totalGainLoss: null, totalGainLossPercent: null, chartData: [], chartLoading: false, maData: [], volumeData: [] }]);
+      this.watchlistRows.update(rows => [...rows, { symbol, name: symbol, sector, price, change, changePercent, volume, costBasis: null, shares: null, totalCost: null, marketValue: null, gainLoss: null, gainLossPercent: null, totalGainLoss: null, totalGainLossPercent: null, chartData: [], chartLoading: false, maData: [], volumeData: [], volumeProfileData: [] }]);
       this.newSymbol = '';
       this.saveToStorage();
     } finally {
@@ -792,8 +826,9 @@ export class WatchlistComponent implements OnInit {
         time: chartData[i].time,
         value: bar.v
       }));
+      const volumeProfileData = buildVolumeProfile(rawBars);
       this.watchlistRows.update(rows => rows.map(r =>
-        r.symbol === symbol ? { ...r, chartData, chartLoading: false, maData, volumeData } : r
+        r.symbol === symbol ? { ...r, chartData, chartLoading: false, maData, volumeData, volumeProfileData } : r
       ));
     } catch {
       this.watchlistRows.update(rows => rows.map(r =>

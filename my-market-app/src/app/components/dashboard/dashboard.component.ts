@@ -14,6 +14,39 @@ interface RangeConfig {
   getStart: () => string;
 }
 
+interface VolumeProfileBin {
+  price: number;
+  step: number;
+  volume: number;
+}
+
+function buildVolumeProfile(bars: Array<{ l: number; h: number; c: number; v: number }>, binCount = 24): VolumeProfileBin[] {
+  if (!bars.length) return [];
+
+  const minPrice = Math.min(...bars.map(bar => bar.l));
+  const maxPrice = Math.max(...bars.map(bar => bar.h));
+  const totalVolume = bars.reduce((sum, bar) => sum + bar.v, 0);
+
+  if (!(maxPrice > minPrice)) {
+    return [{ price: minPrice, step: 1, volume: totalVolume }];
+  }
+
+  const step = (maxPrice - minPrice) / binCount;
+  const bins = Array.from({ length: binCount }, () => 0);
+
+  for (const bar of bars) {
+    const value = bar.c;
+    const index = Math.min(binCount - 1, Math.max(0, Math.floor((value - minPrice) / step)));
+    bins[index] += bar.v;
+  }
+
+  return bins.map((volume, index) => ({
+    price: minPrice + step * (index + 0.5),
+    step,
+    volume,
+  }));
+}
+
 const RANGE_CONFIGS: Record<TimeRange, RangeConfig> = {
   '1D':  { timeframe: '5Min',   getStart: () => new Date().toISOString().split('T')[0] },
   '5D':  { timeframe: '15Min',  getStart: () => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; } },
@@ -34,6 +67,7 @@ interface IndexCard {
   chartData: LineData<Time>[];
   maData: LineData<Time>[];
   volumeData: LineData<Time>[];
+  volumeProfileData: VolumeProfileBin[];
   color: string;
 }
 
@@ -80,7 +114,7 @@ interface IndexCard {
                 <span class="loading">Loading...</span>
               }
             </div>
-            <app-chart [data]="card.chartData" [color]="card.color" [maData]="card.maData" [volumeData]="card.volumeData"></app-chart>
+            <app-chart [data]="card.chartData" [color]="card.color" [maData]="card.maData" [volumeData]="card.volumeData" [volumeProfileData]="card.volumeProfileData"></app-chart>
           </div>
         }
       </div>
@@ -186,9 +220,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private static readonly SYMBOLS = ['DIA', 'SPY', 'QQQ'] as const;
   private static readonly CARD_DEFAULTS: IndexCard[] = [
-    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], volumeData: [], color: '#4a9eff' },
-    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], volumeData: [], color: '#28a745' },
-    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], volumeData: [], color: '#ffc107' },
+    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], volumeData: [], volumeProfileData: [], color: '#4a9eff' },
+    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], volumeData: [], volumeProfileData: [], color: '#28a745' },
+    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], volumeData: [], volumeProfileData: [], color: '#ffc107' },
   ];
 
   readonly indices: WritableSignal<IndexCard[]> = signal<IndexCard[]>(DashboardComponent.CARD_DEFAULTS);
@@ -297,7 +331,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
             time: chartData[i].time,
             value: bar.v
           }));
+          const volumeProfileData = buildVolumeProfile(rawBars);
           updates.volumeData = volumeData;
+          updates.volumeProfileData = volumeProfileData;
           return { ...c, ...updates };
         }));
       }
