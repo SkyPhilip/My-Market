@@ -68,6 +68,7 @@ interface WatchlistRow {
   price: number | null;
   change: number | null;
   changePercent: number | null;
+  pegy: number | null;
   costBasis: number | null;
   shares: number | null;
   totalCost: number | null;
@@ -84,7 +85,7 @@ interface WatchlistRow {
   volumeProfileData: VolumeProfileBin[];
 }
 
-type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'totalGainLossPercent';
+type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'totalGainLossPercent';
 type SortDirection = 'asc' | 'desc';
 
 type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number };
@@ -148,6 +149,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
               <th class="sortable" (click)="sortBy('change')">Change <span class="sort-icon">{{ sortIcon('change') }}</span></th>
               <th class="sortable" (click)="sortBy('changePercent')">Change % <span class="sort-icon">{{ sortIcon('changePercent') }}</span></th>
               <th class="sortable" (click)="sortBy('volume')">Volume <span class="sort-icon">{{ sortIcon('volume') }}</span></th>
+              <th class="sortable" (click)="sortBy('pegy')">PEGY <span class="sort-icon">{{ sortIcon('pegy') }}</span></th>
               @if (hasCostBasis()) {
                 <th class="sortable" (click)="sortBy('shares')">Shares <span class="sort-icon">{{ sortIcon('shares') }}</span></th>
                 <th class="sortable" (click)="sortBy('costBasis')">Cost <span class="sort-icon">{{ sortIcon('costBasis') }}</span></th>
@@ -175,6 +177,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                   {{ row.changePercent !== null ? ((row.changePercent >= 0 ? '+' : '') + (row.changePercent | number:'1.2-2') + '%') : '—' }}
                 </td>
                 <td class="volume">{{ formatVolume(row.volume) }}</td>
+                <td class="price">{{ row.pegy !== null ? (row.pegy | number:'1.3-3') : 'N/A' }}</td>
                 @if (hasCostBasis()) {
                   <td class="shares">{{ row.shares !== null ? (row.shares | number:'1.0-4') : '—' }}</td>
                   <td class="price">{{ row.costBasis !== null ? ('$' + (row.costBasis | number:'1.2-2')) : '—' }}</td>
@@ -197,7 +200,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
               </tr>
               @if (expandedSymbols().has(row.symbol)) {
                 <tr class="chart-row">
-                  <td [attr.colspan]="hasCostBasis() ? 16 : 8">
+                  <td [attr.colspan]="hasCostBasis() ? 17 : 9">
                     @if (row.chartLoading) {
                       <p class="chart-loading">Loading chart...</p>
                     } @else {
@@ -211,7 +214,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
           @if (hasCostBasis()) {
             <tfoot>
               <tr class="summary-row">
-                <td colspan="7">Portfolio Totals</td>
+                <td colspan="8">Portfolio Totals</td>
                 <td></td>
                 <td></td>
                 <td class="price">{{'$'}}{{ portfolioTotalCost() | number:'1.2-2' }}</td>
@@ -636,7 +639,9 @@ export class WatchlistComponent implements OnInit {
         return;
       }
 
-      const uncachedSymbols = initialSymbols.filter(s => !this.fmpService.getCachedSector(s));
+      const uncachedSymbols = initialSymbols.filter(s => (
+        !this.fmpService.getCachedSector(s) || !this.fmpService.getCachedCompanyName(s)
+      ));
       if (uncachedSymbols.length) {
         try {
           await firstValueFrom(this.fmpService.getProfiles(uncachedSymbols));
@@ -647,10 +652,12 @@ export class WatchlistComponent implements OnInit {
 
       const snapResult = await this.fetchSnapshots(initialSymbols);
       if (!snapResult.okRes?.body) return;
+      const pegyMap = await firstValueFrom(this.fmpService.getPegy(initialSymbols));
 
       const snapshots = snapResult.okRes.body;
       const rows: WatchlistRow[] = initialSymbols.map(symbol => {
         const snap: AlpacaSnapshot | undefined = snapshots[symbol];
+        const name = this.fmpService.getCachedCompanyName(symbol) ?? symbol;
         const price = snap?.latestTrade?.p ?? snap?.minuteBar?.c ?? null;
         const prevClose = snap?.prevDailyBar?.c ?? null;
         const change = price && prevClose ? +(price - prevClose).toFixed(2) : null;
@@ -665,7 +672,8 @@ export class WatchlistComponent implements OnInit {
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { symbol, name: symbol, sector, price, change, changePercent, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], volumeData: [], volumeProfileData: [] };
+        const pegy = pegyMap.get(symbol) ?? null;
+        return { symbol, name, sector, price, change, changePercent, pegy, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], volumeData: [], volumeProfileData: [] };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -687,8 +695,9 @@ export class WatchlistComponent implements OnInit {
     this.adding.set(true);
     this.addError.set(null);
     try {
-      const [snapResult] = await Promise.all([
+      const [snapResult, pegyMap] = await Promise.all([
         firstValueFrom(this.alpacaService.getSnapshots([symbol])),
+        firstValueFrom(this.fmpService.getPegy([symbol])),
         this.fmpService.getCachedSector(symbol)
           ? Promise.resolve()
           : firstValueFrom(this.fmpService.getProfiles([symbol])),
@@ -705,9 +714,11 @@ export class WatchlistComponent implements OnInit {
       const change = price && prevClose ? +(price - prevClose).toFixed(2) : null;
       const changePercent = price && prevClose ? +((change! / prevClose) * 100).toFixed(2) : null;
       const sector = this.fmpService.getCachedSector(symbol) ?? '\u2014';
+      const name = this.fmpService.getCachedCompanyName(symbol) ?? symbol;
       const volume = snap?.dailyBar?.v ?? null;
+      const pegy = pegyMap.get(symbol) ?? null;
       this.symbols.update(s => [...s, symbol]);
-      this.watchlistRows.update(rows => [...rows, { symbol, name: symbol, sector, price, change, changePercent, volume, costBasis: null, shares: null, totalCost: null, marketValue: null, gainLoss: null, gainLossPercent: null, totalGainLoss: null, totalGainLossPercent: null, chartData: [], chartLoading: false, maData: [], volumeData: [], volumeProfileData: [] }]);
+      this.watchlistRows.update(rows => [...rows, { symbol, name, sector, price, change, changePercent, pegy, volume, costBasis: null, shares: null, totalCost: null, marketValue: null, gainLoss: null, gainLossPercent: null, totalGainLoss: null, totalGainLossPercent: null, chartData: [], chartLoading: false, maData: [], volumeData: [], volumeProfileData: [] }]);
       this.newSymbol = '';
       this.saveToStorage();
     } finally {

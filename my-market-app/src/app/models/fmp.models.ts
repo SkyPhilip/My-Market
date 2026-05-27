@@ -5,11 +5,33 @@ export interface FmpProfile {
   industry: string;
   marketCap: number;
   price: number;
+  lastDividend?: number;
   exchange: string;
   exchangeShortName: string;
   country: string;
   isEtf: boolean;
+  isFund?: boolean;
   isActivelyTrading: boolean;
+}
+
+export interface FmpRatiosTtm {
+  symbol: string;
+  priceToEarningsRatioTTM?: number;
+  dividendYieldTTM?: number;
+}
+
+export interface FmpIncomeStatement {
+  date: string;
+  symbol: string;
+  eps?: number;
+  epsDiluted?: number;
+}
+
+export interface FmpAnalystEstimate {
+  symbol: string;
+  date: string;
+  epsAvg?: number;
+  numAnalystsEps?: number;
 }
 
 export interface FmpSectorPerformance {
