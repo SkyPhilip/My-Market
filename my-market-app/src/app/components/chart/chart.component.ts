@@ -438,7 +438,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     const paneCrosshairPrice = document.createElement('div');
     paneCrosshairPrice.style.cssText = [
       'position:absolute',
-      'left:2px',
+      'right:2px',
       'padding:1px 4px',
       'border-radius:3px',
       'background:rgba(15,26,48,0.95)',
