@@ -124,6 +124,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     if (changes['data'] && this.series) {
       this.series.setData(this.data);
       this.chart?.timeScale().fitContent();
+      requestAnimationFrame(() => this.renderVolumeProfile());
     }
     if (changes['maData'] && this.maSeries) {
       this.maSeries.setData(this.maData);
@@ -284,34 +285,33 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
 
     const minPrice = Math.min(...bins.map(bin => bin.price - bin.step / 2));
     const maxPrice = Math.max(...bins.map(bin => bin.price + bin.step / 2));
-    const priceRange = maxPrice - minPrice || 1;
     const overlayWidth = host.clientWidth || 120;
-    const chartHeight = Math.max(
-      host.clientHeight || 0,
-      this.chartContainer.nativeElement.clientHeight || 0,
-      250,
-    );
+    const chartHeight = this.chartContainer.nativeElement.clientHeight || 250;
     host.style.width = `${overlayWidth}px`;
     host.style.height = `${chartHeight}px`;
 
-    // Calibrate a single linear price→pixel mapping from two bin midpoints.
-    // bin.price values are close-price bucket centres, which are always within the
-    // chart's visible range, so priceToCoordinate() is guaranteed to return a number.
-    // Once we have slope + intercept we can extrapolate to ANY price (including
-    // bin edges that extend into the high/low territory beyond the chart's visible range).
-    const calIdx1 = Math.floor(bins.length * 0.25);
-    const calIdx2 = Math.floor(bins.length * 0.75);
-    const calP1 = bins[calIdx1].price;
-    const calP2 = bins[calIdx2].price;
-    const calY1 = this.series?.priceToCoordinate(calP1);
-    const calY2 = this.series?.priceToCoordinate(calP2);
+    const rightScale = this.chart?.priceScale('right');
+    const visibleRange = rightScale?.getVisibleRange();
+
+    let visibleMin = minPrice;
+    let visibleMax = maxPrice;
+    if (visibleRange) {
+      visibleMin = Math.min(visibleRange.from, visibleRange.to);
+      visibleMax = Math.max(visibleRange.from, visibleRange.to);
+    }
+
+    const visibleTopCoord = this.series?.priceToCoordinate(visibleMax);
+    const visibleBottomCoord = this.series?.priceToCoordinate(visibleMin);
 
     let priceToPixel: (price: number) => number;
-    if (calY1 != null && calY2 != null && calP1 !== calP2) {
-      const slope = ((calY2 as number) - (calY1 as number)) / (calP2 - calP1);
-      const intercept = (calY1 as number) - slope * calP1;
-      priceToPixel = (price: number) => slope * price + intercept;
+    if (visibleTopCoord != null && visibleBottomCoord != null && visibleMax > visibleMin) {
+      priceToPixel = (price: number) => {
+        const clampedPrice = Math.min(visibleMax, Math.max(visibleMin, price));
+        const ratio = (visibleMax - clampedPrice) / (visibleMax - visibleMin);
+        return visibleTopCoord + ratio * (visibleBottomCoord - visibleTopCoord);
+      };
     } else {
+      const priceRange = maxPrice - minPrice || 1;
       priceToPixel = (price: number) => ((maxPrice - price) / priceRange) * chartHeight;
     }
 
@@ -354,8 +354,8 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     valueAreaRect.setAttribute('x', '0');
     valueAreaRect.setAttribute('y', String(Math.min(valueAreaTop, valueAreaBottom)));
     valueAreaRect.setAttribute('width', String(overlayWidth));
-        valueAreaRect.setAttribute('height', String(Math.max(1, Math.abs(valueAreaBottom - valueAreaTop))));
-        valueAreaRect.setAttribute('rx', '3');
+    valueAreaRect.setAttribute('height', String(Math.max(1, Math.abs(valueAreaBottom - valueAreaTop))));
+    valueAreaRect.setAttribute('rx', '3');
     valueAreaRect.setAttribute('ry', '3');
     svg.appendChild(valueAreaRect);
 
@@ -367,7 +367,8 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       const pxTop = Math.round(Math.min(priceToPixel(binTopPrice), priceToPixel(binBottomPrice)));
       const pxBottom = Math.round(Math.max(priceToPixel(binTopPrice), priceToPixel(binBottomPrice)));
       const barHeight = Math.max(2, pxBottom - pxTop - 1); // 1px gap between bins
-      const barWidth = Math.max(4, Math.round((bin.volume / maxVolume) * (overlayWidth - 12)));
+      const xInset = 2;
+      const barWidth = Math.max(4, Math.round((bin.volume / maxVolume) * (overlayWidth - (xInset + 10))));
       const y = Math.max(0, Math.min(chartHeight - barHeight, pxTop));
 
       const bar = document.createElementNS(svgNamespace, 'rect');
@@ -394,7 +395,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
 
       bar.setAttribute('fill', fill);
       bar.setAttribute('stroke', stroke);
-      bar.setAttribute('x', String(Math.max(0, overlayWidth - barWidth)));
+      bar.setAttribute('x', String(xInset));
       bar.setAttribute('y', String(y));
       bar.setAttribute('width', String(barWidth));
       bar.setAttribute('height', String(barHeight));
@@ -421,5 +422,70 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     }
 
     host.appendChild(svg);
+
+    const paneCrosshairLine = document.createElement('div');
+    paneCrosshairLine.style.cssText = [
+      'position:absolute',
+      'left:0',
+      'right:0',
+      'height:1px',
+      'background:rgba(255,255,255,0.7)',
+      'pointer-events:none',
+      'z-index:6',
+      'display:none',
+    ].join(';');
+
+    const paneCrosshairPrice = document.createElement('div');
+    paneCrosshairPrice.style.cssText = [
+      'position:absolute',
+      'left:2px',
+      'padding:1px 4px',
+      'border-radius:3px',
+      'background:rgba(15,26,48,0.95)',
+      'border:1px solid rgba(74,158,255,0.8)',
+      'color:#dfe9ff',
+      'font-size:10px',
+      'line-height:1.2',
+      'font-weight:600',
+      'pointer-events:none',
+      'z-index:7',
+      'display:none',
+    ].join(';');
+
+    host.appendChild(paneCrosshairLine);
+    host.appendChild(paneCrosshairPrice);
+
+    const priceFormatter = this.series?.priceFormatter();
+    host.onmousemove = (event: MouseEvent) => {
+      const rect = host.getBoundingClientRect();
+      const y = Math.max(0, Math.min(chartHeight - 1, event.clientY - rect.top));
+      const yPx = Math.round(y);
+
+      paneCrosshairLine.style.display = 'block';
+      paneCrosshairLine.style.top = `${yPx}px`;
+
+      const price = this.series?.coordinateToPrice(y);
+      if (price != null) {
+        const numericPrice = Number(price);
+        paneCrosshairPrice.textContent = Number.isFinite(numericPrice)
+          ? (priceFormatter ? priceFormatter.format(numericPrice) : numericPrice.toFixed(2))
+          : '';
+
+        if (paneCrosshairPrice.textContent) {
+          const chipTop = Math.max(0, Math.min(chartHeight - 16, yPx - 8));
+          paneCrosshairPrice.style.top = `${chipTop}px`;
+          paneCrosshairPrice.style.display = 'block';
+        } else {
+          paneCrosshairPrice.style.display = 'none';
+        }
+      } else {
+        paneCrosshairPrice.style.display = 'none';
+      }
+    };
+
+    host.onmouseleave = () => {
+      paneCrosshairLine.style.display = 'none';
+      paneCrosshairPrice.style.display = 'none';
+    };
   }
 }
