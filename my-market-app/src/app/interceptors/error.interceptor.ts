@@ -83,12 +83,14 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
     catchError(error => {
       console.log('ErrorInterceptor caught:', req.url, 'status:', error.status, 'body:', error.error);
       const isAlpacaRequest = req.url.includes('alpaca.markets');
+      const isFmpRequest = req.url.includes('financialmodelingprep.com');
       const isLoginRequest = isAlpacaRequest && req.url.includes('/v2/account') && !authService.isAuthenticated();
+      const isGracefullyHandledFmpRead = isFmpRequest && req.method === 'GET';
 
       if (error.status === 401 && isAlpacaRequest && !isLoginRequest) {
         console.log('ErrorInterceptor: credentials invalid, redirecting to login');
         authService.logout();
-      } else if (!isLoginRequest) {
+      } else if (!isLoginRequest && !isGracefullyHandledFmpRead) {
         const message = buildErrorMessage(req.url, error);
         console.log('ErrorInterceptor: showing notification:', message);
         notificationService.showError(message);

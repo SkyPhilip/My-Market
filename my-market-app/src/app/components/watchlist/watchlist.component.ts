@@ -173,13 +173,13 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
           >{{ range }}</button>
         }
         <button
-          class="range-btn"
+          class="range-btn ma50-btn"
           [class.active]="showMovingAverage()"
           (click)="toggleMovingAverage()"
           title="Show or hide the 50-day moving average"
         >50MA</button>
         <button
-          class="range-btn"
+          class="range-btn ma150-btn"
           [class.active]="showMovingAverage150()"
           (click)="toggleMovingAverage150()"
           title="Show or hide the 150-day moving average"
@@ -510,6 +510,32 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       background: #4a9eff;
       color: #fff;
       border-color: #4a9eff;
+    }
+    .range-btn.ma50-btn {
+      border-color: rgba(240, 192, 64, 0.55);
+      color: #f0c040;
+    }
+    .range-btn.ma50-btn:hover {
+      border-color: #f0c040;
+      color: #f6d16d;
+    }
+    .range-btn.ma50-btn.active {
+      background: #f0c040;
+      border-color: #f0c040;
+      color: #1a1a2e;
+    }
+    .range-btn.ma150-btn {
+      border-color: rgba(176, 124, 255, 0.6);
+      color: #b07cff;
+    }
+    .range-btn.ma150-btn:hover {
+      border-color: #b07cff;
+      color: #c7a0ff;
+    }
+    .range-btn.ma150-btn.active {
+      background: #b07cff;
+      border-color: #b07cff;
+      color: #fff;
     }
     .clickable-row {
       cursor: pointer;

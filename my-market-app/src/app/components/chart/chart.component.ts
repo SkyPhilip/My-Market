@@ -13,6 +13,7 @@ interface VolumeProfileBin {
   template: `
     <div #chartWrapper class="chart-wrapper">
       <div #crosshairLabel class="crosshair-label"></div>
+      <div #maTooltip class="ma-tooltip"></div>
       <div #chartContainer class="chart-container"></div>
       <div #volumeProfile class="volume-profile"></div>
     </div>
@@ -22,6 +23,7 @@ interface VolumeProfileBin {
       display: grid;
       grid-template-columns: minmax(0, 1fr) 120px;
       width: 100%;
+      position: relative;
     }
     .volume-profile {
       position: relative;
@@ -99,11 +101,28 @@ interface VolumeProfileBin {
       white-space: nowrap;
       display: none;
     }
+    .ma-tooltip {
+      position: absolute;
+      top: 6px;
+      left: 8px;
+      background: rgba(15, 26, 48, 0.9);
+      border: 1px solid rgba(42, 58, 94, 0.9);
+      border-radius: 6px;
+      color: #e0e0e0;
+      font-size: 11px;
+      line-height: 1.3;
+      padding: 4px 8px;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 3;
+      display: none;
+    }
   `]
 })
 export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @ViewChild('chartContainer') chartContainer!: ElementRef<HTMLDivElement>;
   @ViewChild('crosshairLabel') crosshairLabel!: ElementRef<HTMLDivElement>;
+  @ViewChild('maTooltip') maTooltip!: ElementRef<HTMLDivElement>;
   @Input() data: LineData<Time>[] = [];
   @Input() color = '#4a9eff';
   @Input() maData: LineData<Time>[] = [];
@@ -278,8 +297,10 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
 
     this.chart.subscribeCrosshairMove((param: MouseEventParams<Time>) => {
       const label = this.crosshairLabel.nativeElement;
+      const maTooltip = this.maTooltip.nativeElement;
       if (!param.time) {
         label.style.display = 'none';
+        maTooltip.style.display = 'none';
         return;
       }
 
@@ -302,6 +323,22 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       if (param.point) {
         label.style.left = `${param.point.x}px`;
         label.style.transform = 'translateX(-50%)';
+      }
+
+      const ma50Value = this.maSeries ? param.seriesData.get(this.maSeries) as number | undefined : undefined;
+      const ma150Value = this.ma150Series ? param.seriesData.get(this.ma150Series) as number | undefined : undefined;
+      const ma50Text = this.showMovingAverage && Number.isFinite(ma50Value)
+        ? `<span style="color:#f0c040">50MA: ${ma50Value!.toFixed(2)}</span>`
+        : '';
+      const ma150Text = this.showMovingAverage150 && Number.isFinite(ma150Value)
+        ? `<span style="color:#b07cff">150MA: ${ma150Value!.toFixed(2)}</span>`
+        : '';
+
+      if (!ma50Text && !ma150Text) {
+        maTooltip.style.display = 'none';
+      } else {
+        maTooltip.innerHTML = [ma50Text, ma150Text].filter(Boolean).join('<br>');
+        maTooltip.style.display = 'block';
       }
     });
 
