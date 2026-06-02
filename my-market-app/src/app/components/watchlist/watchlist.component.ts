@@ -23,6 +23,13 @@ interface VolumeProfileBin {
   volume: number;
 }
 
+interface RangeLevels {
+  rangeHigh: number;
+  rangeLow: number;
+  swingHigh: number | null;
+  swingLow: number | null;
+}
+
 function buildVolumeProfile(bars: Array<{ l: number; h: number; c: number; v: number }>, binCount = 24): VolumeProfileBin[] {
   if (!bars.length) return [];
 
@@ -48,6 +55,33 @@ function buildVolumeProfile(bars: Array<{ l: number; h: number; c: number; v: nu
     step,
     volume,
   }));
+}
+
+function buildRangeLevels(bars: Array<{ t: string; h: number; l: number }>): RangeLevels | null {
+  if (!bars.length) return null;
+
+  const dates = Array.from(new Set(bars.map(bar => bar.t.split('T')[0]))).sort();
+  if (dates.length < 2) return null;
+
+  const rangeDate = dates[dates.length - 2];
+  const rangeDayBars = bars.filter(bar => bar.t.startsWith(rangeDate));
+  if (!rangeDayBars.length) return null;
+
+  const rangeHigh = Math.max(...rangeDayBars.map(bar => bar.h));
+  const rangeLow = Math.min(...rangeDayBars.map(bar => bar.l));
+
+  let swingHigh: number | null = null;
+  let swingLow: number | null = null;
+  if (dates.length >= 3) {
+    const swingDate = dates[dates.length - 3];
+    const swingDayBars = bars.filter(bar => bar.t.startsWith(swingDate));
+    if (swingDayBars.length) {
+      swingHigh = Math.max(...swingDayBars.map(bar => bar.h));
+      swingLow = Math.min(...swingDayBars.map(bar => bar.l));
+    }
+  }
+
+  return { rangeHigh, rangeLow, swingHigh, swingLow };
 }
 
 const RANGE_CONFIGS: Record<TimeRange, RangeConfig> = {
@@ -81,8 +115,13 @@ interface WatchlistRow {
   chartLoading: boolean;
   volume: number | null;
   maData: LineData<Time>[];
+  ma150Data: LineData<Time>[];
   volumeData: LineData<Time>[];
   volumeProfileData: VolumeProfileBin[];
+  rangeHigh: number | null;
+  rangeLow: number | null;
+  swingHigh: number | null;
+  swingLow: number | null;
 }
 
 type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'totalGainLossPercent';
@@ -132,6 +171,26 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
             [class.active]="selectedRange() === range"
             (click)="selectRange(range)"
           >{{ range }}</button>
+        }
+        <button
+          class="range-btn"
+          [class.active]="showMovingAverage()"
+          (click)="toggleMovingAverage()"
+          title="Show or hide the 50-day moving average"
+        >50MA</button>
+        <button
+          class="range-btn"
+          [class.active]="showMovingAverage150()"
+          (click)="toggleMovingAverage150()"
+          title="Show or hide the 150-day moving average"
+        >150MA</button>
+        @if (selectedRange() === '5D') {
+          <button
+            class="range-btn"
+            [class.active]="showRangeLevels()"
+            (click)="toggleRangeLevels()"
+            title="Show previous day range lines on 5D charts"
+          >Range High/Low</button>
         }
       </div>
       @if (watchlistState().prefetchOrBusy) {
@@ -204,7 +263,21 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                     @if (row.chartLoading) {
                       <p class="chart-loading">Loading chart...</p>
                     } @else {
-                      <app-chart [data]="row.chartData" [color]="'#4a9eff'" [maData]="row.maData" [volumeData]="row.volumeData" [volumeProfileData]="row.volumeProfileData"></app-chart>
+                      <app-chart
+                        [data]="row.chartData"
+                        [color]="'#4a9eff'"
+                        [maData]="row.maData"
+                        [showMovingAverage]="showMovingAverage()"
+                        [ma150Data]="row.ma150Data"
+                        [showMovingAverage150]="showMovingAverage150()"
+                        [volumeData]="row.volumeData"
+                        [volumeProfileData]="row.volumeProfileData"
+                        [showRangeLines]="showRangeLevels() && selectedRange() === '5D'"
+                        [rangeHigh]="row.rangeHigh"
+                        [rangeLow]="row.rangeLow"
+                        [swingHigh]="row.swingHigh"
+                        [swingLow]="row.swingLow"
+                      ></app-chart>
                     }
                   </td>
                 </tr>
@@ -530,6 +603,9 @@ export class WatchlistComponent implements OnInit {
   expandedSymbols = signal<Set<string>>(new Set());
   readonly timeRanges: TimeRange[] = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'All'];
   readonly selectedRange = signal<TimeRange>('1D');
+  readonly showMovingAverage = signal(false);
+  readonly showMovingAverage150 = signal(false);
+  readonly showRangeLevels = signal(false);
 
   sortedWatchlistRows = computed(() => {
     const rows = this.watchlistRows();
@@ -673,7 +749,7 @@ export class WatchlistComponent implements OnInit {
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
         const pegy = pegyMap.get(symbol) ?? null;
-        return { symbol, name, sector, price, change, changePercent, pegy, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], volumeData: [], volumeProfileData: [] };
+        return { symbol, name, sector, price, change, changePercent, pegy, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -718,7 +794,7 @@ export class WatchlistComponent implements OnInit {
       const volume = snap?.dailyBar?.v ?? null;
       const pegy = pegyMap.get(symbol) ?? null;
       this.symbols.update(s => [...s, symbol]);
-      this.watchlistRows.update(rows => [...rows, { symbol, name, sector, price, change, changePercent, pegy, volume, costBasis: null, shares: null, totalCost: null, marketValue: null, gainLoss: null, gainLossPercent: null, totalGainLoss: null, totalGainLossPercent: null, chartData: [], chartLoading: false, maData: [], volumeData: [], volumeProfileData: [] }]);
+      this.watchlistRows.update(rows => [...rows, { symbol, name, sector, price, change, changePercent, pegy, volume, costBasis: null, shares: null, totalCost: null, marketValue: null, gainLoss: null, gainLossPercent: null, totalGainLoss: null, totalGainLossPercent: null, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null }]);
       this.newSymbol = '';
       this.saveToStorage();
     } finally {
@@ -783,9 +859,25 @@ export class WatchlistComponent implements OnInit {
 
   selectRange(range: TimeRange): void {
     this.selectedRange.set(range);
+    if (range !== '5D') {
+      this.showRangeLevels.set(false);
+    }
     for (const symbol of this.expandedSymbols()) {
       this.loadChart(symbol);
     }
+  }
+
+  toggleRangeLevels(): void {
+    if (this.selectedRange() !== '5D') return;
+    this.showRangeLevels.set(!this.showRangeLevels());
+  }
+
+  toggleMovingAverage(): void {
+    this.showMovingAverage.set(!this.showMovingAverage());
+  }
+
+  toggleMovingAverage150(): void {
+    this.showMovingAverage150.set(!this.showMovingAverage150());
   }
 
   private async loadChart(symbol: string): Promise<void> {
@@ -819,16 +911,27 @@ export class WatchlistComponent implements OnInit {
       });
       // Compute 50-period moving average (cumulative for first 49 points)
       const maData: LineData<Time>[] = [];
+      const ma150Data: LineData<Time>[] = [];
       const period = 50;
+      const period150 = 150;
       if (chartData.length > 0) {
         let sum = 0;
+        let sum150 = 0;
         for (let i = 0; i < chartData.length; i++) {
           sum += chartData[i].value;
+          sum150 += chartData[i].value;
           if (i >= period) {
             sum -= chartData[i - period].value;
             maData.push({ time: chartData[i].time, value: +(sum / period).toFixed(2) });
           } else {
             maData.push({ time: chartData[i].time, value: +(sum / (i + 1)).toFixed(2) });
+          }
+
+          if (i >= period150) {
+            sum150 -= chartData[i - period150].value;
+            ma150Data.push({ time: chartData[i].time, value: +(sum150 / period150).toFixed(2) });
+          } else {
+            ma150Data.push({ time: chartData[i].time, value: +(sum150 / (i + 1)).toFixed(2) });
           }
         }
       }
@@ -838,8 +941,21 @@ export class WatchlistComponent implements OnInit {
         value: bar.v
       }));
       const volumeProfileData = buildVolumeProfile(rawBars);
+      const rangeLevels = range === '5D' ? buildRangeLevels(rawBars) : null;
       this.watchlistRows.update(rows => rows.map(r =>
-        r.symbol === symbol ? { ...r, chartData, chartLoading: false, maData, volumeData, volumeProfileData } : r
+        r.symbol === symbol ? {
+          ...r,
+          chartData,
+          chartLoading: false,
+          maData,
+          ma150Data,
+          volumeData,
+          volumeProfileData,
+          rangeHigh: rangeLevels?.rangeHigh ?? null,
+          rangeLow: rangeLevels?.rangeLow ?? null,
+          swingHigh: rangeLevels?.swingHigh ?? null,
+          swingLow: rangeLevels?.swingLow ?? null,
+        } : r
       ));
     } catch {
       this.watchlistRows.update(rows => rows.map(r =>

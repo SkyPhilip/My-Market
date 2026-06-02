@@ -107,13 +107,26 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() data: LineData<Time>[] = [];
   @Input() color = '#4a9eff';
   @Input() maData: LineData<Time>[] = [];
+  @Input() showMovingAverage = true;
+  @Input() ma150Data: LineData<Time>[] = [];
+  @Input() showMovingAverage150 = false;
   @Input() volumeData: LineData<Time>[] = [];
   @Input() volumeProfileData: VolumeProfileBin[] = [];
+  @Input() showRangeLines = false;
+  @Input() rangeHigh: number | null = null;
+  @Input() rangeLow: number | null = null;
+  @Input() swingHigh: number | null = null;
+  @Input() swingLow: number | null = null;
 
   private chart: IChartApi | null = null;
   private series: ISeriesApi<'Line'> | null = null;
   private maSeries: ISeriesApi<'Line'> | null = null;
+  private ma150Series: ISeriesApi<'Line'> | null = null;
   private volumeSeries: ISeriesApi<'Histogram'> | null = null;
+  private rangeHighSeries: ISeriesApi<'Line'> | null = null;
+  private rangeLowSeries: ISeriesApi<'Line'> | null = null;
+  private swingHighSeries: ISeriesApi<'Line'> | null = null;
+  private swingLowSeries: ISeriesApi<'Line'> | null = null;
   @ViewChild('volumeProfile') volumeProfile!: ElementRef<HTMLDivElement>;
 
   ngAfterViewInit(): void {
@@ -126,14 +139,20 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       this.chart?.timeScale().fitContent();
       requestAnimationFrame(() => this.renderVolumeProfile());
     }
-    if (changes['maData'] && this.maSeries) {
-      this.maSeries.setData(this.maData);
+    if ((changes['maData'] || changes['showMovingAverage']) && this.maSeries) {
+      this.updateMovingAverageSeries();
+    }
+    if ((changes['ma150Data'] || changes['showMovingAverage150']) && this.ma150Series) {
+      this.updateMovingAverage150Series();
     }
     if (changes['volumeData'] && this.volumeSeries) {
       this.volumeSeries.setData(this.volumeData);
     }
     if (changes['volumeProfileData'] && this.chart) {
       requestAnimationFrame(() => this.renderVolumeProfile());
+    }
+    if ((changes['showRangeLines'] || changes['rangeHigh'] || changes['rangeLow'] || changes['swingHigh'] || changes['swingLow'] || changes['data']) && this.chart) {
+      this.updateRangeLines();
     }
   }
 
@@ -181,6 +200,13 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       priceLineVisible: false,
     });
 
+    this.ma150Series = this.chart.addSeries(LineSeries, {
+      color: '#b07cff',
+      lineWidth: 1,
+      lastValueVisible: false,
+      priceLineVisible: false,
+    });
+
     this.volumeSeries = this.chart.addSeries(HistogramSeries, {
       color: 'rgba(74, 158, 255, 0.3)',
       priceFormat: { type: 'volume' },
@@ -199,9 +225,50 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       this.chart.timeScale().fitContent();
     }
 
-    if (this.maData.length) {
-      this.maSeries.setData(this.maData);
-    }
+    this.rangeHighSeries = this.chart.addSeries(LineSeries, {
+      title: 'Range High',
+      color: 'rgba(255, 193, 7, 0.9)',
+      lineWidth: 1,
+      lineStyle: 2,
+      lastValueVisible: true,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    });
+
+    this.rangeLowSeries = this.chart.addSeries(LineSeries, {
+      title: 'Range Low',
+      color: 'rgba(220, 53, 69, 0.9)',
+      lineWidth: 1,
+      lineStyle: 2,
+      lastValueVisible: true,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    });
+
+    this.swingHighSeries = this.chart.addSeries(LineSeries, {
+      title: 'Swing High',
+      color: 'rgba(64, 224, 208, 0.95)',
+      lineWidth: 1,
+      lineStyle: 1,
+      lastValueVisible: true,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    });
+
+    this.swingLowSeries = this.chart.addSeries(LineSeries, {
+      title: 'Swing Low',
+      color: 'rgba(255, 105, 180, 0.95)',
+      lineWidth: 1,
+      lineStyle: 1,
+      lastValueVisible: true,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    });
+
+    this.updateRangeLines();
+
+    this.updateMovingAverageSeries();
+    this.updateMovingAverage150Series();
 
     if (this.volumeData.length) {
       this.volumeSeries.setData(this.volumeData);
@@ -247,6 +314,62 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       }
     });
     resizeObserver.observe(container);
+  }
+
+  private updateRangeLines(): void {
+    if (!this.rangeHighSeries || !this.rangeLowSeries || !this.swingHighSeries || !this.swingLowSeries) return;
+
+    if (!this.showRangeLines || this.rangeHigh === null || this.rangeLow === null || this.data.length < 2) {
+      this.rangeHighSeries.setData([]);
+      this.rangeLowSeries.setData([]);
+      this.swingHighSeries.setData([]);
+      this.swingLowSeries.setData([]);
+      return;
+    }
+
+    const highData: LineData<Time>[] = this.data.map(point => ({ time: point.time, value: this.rangeHigh! }));
+    const lowData: LineData<Time>[] = this.data.map(point => ({ time: point.time, value: this.rangeLow! }));
+    this.rangeHighSeries.setData(highData);
+    this.rangeLowSeries.setData(lowData);
+
+    const showSwingHigh = this.swingHigh !== null && this.swingHigh > this.rangeHigh;
+    const showSwingLow = this.swingLow !== null && this.swingLow < this.rangeLow;
+
+    if (showSwingHigh) {
+      const swingHighData: LineData<Time>[] = this.data.map(point => ({ time: point.time, value: this.swingHigh! }));
+      this.swingHighSeries.setData(swingHighData);
+    } else {
+      this.swingHighSeries.setData([]);
+    }
+
+    if (showSwingLow) {
+      const swingLowData: LineData<Time>[] = this.data.map(point => ({ time: point.time, value: this.swingLow! }));
+      this.swingLowSeries.setData(swingLowData);
+    } else {
+      this.swingLowSeries.setData([]);
+    }
+  }
+
+  private updateMovingAverageSeries(): void {
+    if (!this.maSeries) return;
+
+    if (!this.showMovingAverage || !this.maData.length) {
+      this.maSeries.setData([]);
+      return;
+    }
+
+    this.maSeries.setData(this.maData);
+  }
+
+  private updateMovingAverage150Series(): void {
+    if (!this.ma150Series) return;
+
+    if (!this.showMovingAverage150 || !this.ma150Data.length) {
+      this.ma150Series.setData([]);
+      return;
+    }
+
+    this.ma150Series.setData(this.ma150Data);
   }
 
   private renderVolumeProfile(): void {

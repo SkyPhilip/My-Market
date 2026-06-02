@@ -24,6 +24,7 @@ import { NotificationService } from '../../services/notification.service';
       flex-direction: column;
       gap: 8px;
       max-width: 400px;
+      width: min(400px, calc(100vw - 32px));
     }
     .notification {
       padding: 12px 16px;
@@ -33,8 +34,19 @@ import { NotificationService } from '../../services/notification.service';
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 12px;
+      max-width: 100%;
+      box-sizing: border-box;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
       animation: slideIn 0.3s ease;
+    }
+    .notification__message {
+      flex: 1;
+      min-width: 0;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.35;
     }
     .notification--error {
       background: #dc3545;
@@ -51,7 +63,9 @@ import { NotificationService } from '../../services/notification.service';
       color: #fff;
       font-size: 18px;
       cursor: pointer;
-      margin-left: 12px;
+      margin-left: 0;
+      flex: 0 0 auto;
+      align-self: flex-start;
     }
     @keyframes slideIn {
       from { transform: translateX(100%); opacity: 0; }

@@ -20,6 +20,13 @@ interface VolumeProfileBin {
   volume: number;
 }
 
+interface RangeLevels {
+  rangeHigh: number;
+  rangeLow: number;
+  swingHigh: number | null;
+  swingLow: number | null;
+}
+
 function buildVolumeProfile(bars: Array<{ l: number; h: number; c: number; v: number }>, binCount = 24): VolumeProfileBin[] {
   if (!bars.length) return [];
 
@@ -47,6 +54,33 @@ function buildVolumeProfile(bars: Array<{ l: number; h: number; c: number; v: nu
   }));
 }
 
+function buildRangeLevels(bars: Array<{ t: string; h: number; l: number }>): RangeLevels | null {
+  if (!bars.length) return null;
+
+  const dates = Array.from(new Set(bars.map(bar => bar.t.split('T')[0]))).sort();
+  if (dates.length < 2) return null;
+
+  const rangeDate = dates[dates.length - 2];
+  const rangeDayBars = bars.filter(bar => bar.t.startsWith(rangeDate));
+  if (!rangeDayBars.length) return null;
+
+  const rangeHigh = Math.max(...rangeDayBars.map(bar => bar.h));
+  const rangeLow = Math.min(...rangeDayBars.map(bar => bar.l));
+
+  let swingHigh: number | null = null;
+  let swingLow: number | null = null;
+  if (dates.length >= 3) {
+    const swingDate = dates[dates.length - 3];
+    const swingDayBars = bars.filter(bar => bar.t.startsWith(swingDate));
+    if (swingDayBars.length) {
+      swingHigh = Math.max(...swingDayBars.map(bar => bar.h));
+      swingLow = Math.min(...swingDayBars.map(bar => bar.l));
+    }
+  }
+
+  return { rangeHigh, rangeLow, swingHigh, swingLow };
+}
+
 const RANGE_CONFIGS: Record<TimeRange, RangeConfig> = {
   '1D':  { timeframe: '5Min',   getStart: () => new Date().toISOString().split('T')[0] },
   '5D':  { timeframe: '15Min',  getStart: () => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; } },
@@ -66,8 +100,13 @@ interface IndexCard {
   changePercent: number | null;
   chartData: LineData<Time>[];
   maData: LineData<Time>[];
+  ma150Data: LineData<Time>[];
   volumeData: LineData<Time>[];
   volumeProfileData: VolumeProfileBin[];
+  rangeHigh: number | null;
+  rangeLow: number | null;
+  swingHigh: number | null;
+  swingLow: number | null;
   color: string;
 }
 
@@ -85,6 +124,26 @@ interface IndexCard {
             [class.active]="selectedRange() === range"
             (click)="selectRange(range)"
           >{{ range }}</button>
+        }
+        <button
+          class="range-btn"
+          [class.active]="showMovingAverage()"
+          (click)="toggleMovingAverage()"
+          title="Show or hide the 50-day moving average"
+        >50MA</button>
+        <button
+          class="range-btn"
+          [class.active]="showMovingAverage150()"
+          (click)="toggleMovingAverage150()"
+          title="Show or hide the 150-day moving average"
+        >150MA</button>
+        @if (selectedRange() === '5D') {
+          <button
+            class="range-btn"
+            [class.active]="showRangeLevels()"
+            (click)="toggleRangeLevels()"
+            title="Show previous day range lines on 5D charts"
+          >Range High/Low</button>
         }
       </div>
       @if (summaryState().prefetchOrBusy) {
@@ -114,7 +173,21 @@ interface IndexCard {
                 <span class="loading">Loading...</span>
               }
             </div>
-            <app-chart [data]="card.chartData" [color]="card.color" [maData]="card.maData" [volumeData]="card.volumeData" [volumeProfileData]="card.volumeProfileData"></app-chart>
+            <app-chart
+              [data]="card.chartData"
+              [color]="card.color"
+              [maData]="card.maData"
+              [showMovingAverage]="showMovingAverage()"
+              [ma150Data]="card.ma150Data"
+              [showMovingAverage150]="showMovingAverage150()"
+              [volumeData]="card.volumeData"
+              [volumeProfileData]="card.volumeProfileData"
+              [showRangeLines]="showRangeLevels() && selectedRange() === '5D'"
+              [rangeHigh]="card.rangeHigh"
+              [rangeLow]="card.rangeLow"
+              [swingHigh]="card.swingHigh"
+              [swingLow]="card.swingLow"
+            ></app-chart>
           </div>
         }
       </div>
@@ -220,15 +293,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private static readonly SYMBOLS = ['DIA', 'SPY', 'QQQ'] as const;
   private static readonly CARD_DEFAULTS: IndexCard[] = [
-    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], volumeData: [], volumeProfileData: [], color: '#4a9eff' },
-    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], volumeData: [], volumeProfileData: [], color: '#28a745' },
-    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], volumeData: [], volumeProfileData: [], color: '#ffc107' },
+    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#4a9eff' },
+    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#28a745' },
+    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#ffc107' },
   ];
 
   readonly indices: WritableSignal<IndexCard[]> = signal<IndexCard[]>(DashboardComponent.CARD_DEFAULTS);
 
   readonly timeRanges: TimeRange[] = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'All'];
   readonly selectedRange = signal<TimeRange>('1D');
+  readonly showMovingAverage = signal(false);
+  readonly showMovingAverage150 = signal(false);
+  readonly showRangeLevels = signal(false);
 
   fetchSummary = fetchFnWithState<AlpacaSnapshotsResponse, AlpacaErrorBody>(() =>
     this.alpacaService.getMarketSummary()
@@ -261,7 +337,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   selectRange(range: TimeRange): void {
     this.selectedRange.set(range);
+    if (range !== '5D') {
+      this.showRangeLevels.set(false);
+    }
     this.loadCharts();
+  }
+
+  toggleRangeLevels(): void {
+    if (this.selectedRange() !== '5D') return;
+    this.showRangeLevels.set(!this.showRangeLevels());
+  }
+
+  toggleMovingAverage(): void {
+    this.showMovingAverage.set(!this.showMovingAverage());
+  }
+
+  toggleMovingAverage150(): void {
+    this.showMovingAverage150.set(!this.showMovingAverage150());
   }
 
   private async loadMarketSummary(): Promise<void> {
@@ -312,28 +404,45 @@ export class DashboardComponent implements OnInit, OnDestroy {
           }
           // Compute 50-period moving average (cumulative for first 49 points)
           const maData: LineData<Time>[] = [];
+          const ma150Data: LineData<Time>[] = [];
           const period = 50;
+          const period150 = 150;
           if (chartData.length > 0) {
             let sum = 0;
+            let sum150 = 0;
             for (let i = 0; i < chartData.length; i++) {
               sum += chartData[i].value;
+              sum150 += chartData[i].value;
               if (i >= period) {
                 sum -= chartData[i - period].value;
                 maData.push({ time: chartData[i].time, value: +(sum / period).toFixed(2) });
               } else {
                 maData.push({ time: chartData[i].time, value: +(sum / (i + 1)).toFixed(2) });
               }
+
+              if (i >= period150) {
+                sum150 -= chartData[i - period150].value;
+                ma150Data.push({ time: chartData[i].time, value: +(sum150 / period150).toFixed(2) });
+              } else {
+                ma150Data.push({ time: chartData[i].time, value: +(sum150 / (i + 1)).toFixed(2) });
+              }
             }
           }
           updates.maData = maData;
+          updates.ma150Data = ma150Data;
           // Build volume data from bars
           const volumeData: LineData<Time>[] = rawBars.map((bar, i) => ({
             time: chartData[i].time,
             value: bar.v
           }));
           const volumeProfileData = buildVolumeProfile(rawBars);
+          const rangeLevels = range === '5D' ? buildRangeLevels(rawBars) : null;
           updates.volumeData = volumeData;
           updates.volumeProfileData = volumeProfileData;
+          updates.rangeHigh = rangeLevels?.rangeHigh ?? null;
+          updates.rangeLow = rangeLevels?.rangeLow ?? null;
+          updates.swingHigh = rangeLevels?.swingHigh ?? null;
+          updates.swingLow = rangeLevels?.swingLow ?? null;
           return { ...c, ...updates };
         }));
       }
