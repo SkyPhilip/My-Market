@@ -153,7 +153,29 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
               <button type="button" class="clear-btn" (click)="clearInput()">✕</button>
             }
           </div>
-          <button type="submit" class="watchlist-btn add-btn" [disabled]="!newSymbol.trim() || adding()">Add</button>
+          @if (isCurrentHoldings()) {
+            <input
+              type="number"
+              [(ngModel)]="newShares"
+              name="shares"
+              placeholder="Shares"
+              class="watchlist-input holding-input"
+              min="0"
+              step="0.0001"
+              [disabled]="adding()"
+            />
+            <input
+              type="number"
+              [(ngModel)]="newCostBasis"
+              name="costBasis"
+              placeholder="Cost/Share"
+              class="watchlist-input holding-input"
+              min="0"
+              step="0.01"
+              [disabled]="adding()"
+            />
+          }
+          <button type="submit" class="watchlist-btn add-btn" [disabled]="!canSubmitSymbol() || adding()">Add</button>
         </form>
         <div class="io-buttons">
           <button class="watchlist-btn io-btn" (click)="exportWatchlist()">Export</button>
@@ -387,6 +409,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
     .watchlist-form {
       display: flex;
       gap: 8px;
+      flex-wrap: wrap;
     }
     .input-wrapper {
       position: relative;
@@ -450,6 +473,9 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       font-size: 14px;
       width: 200px;
       outline: none;
+    }
+    .holding-input {
+      width: 140px;
     }
     .watchlist-input:focus {
       border-color: #4a9eff;
@@ -661,6 +687,8 @@ export class WatchlistComponent implements OnInit {
   private symbols = signal<string[]>([]);
   watchlistRows: WritableSignal<WatchlistRow[]> = signal<WatchlistRow[]>([]);
   newSymbol = '';
+  newShares = '';
+  newCostBasis = '';
   adding = signal(false);
   addError = signal<string | null>(null);
 
@@ -735,7 +763,22 @@ export class WatchlistComponent implements OnInit {
 
   clearInput(): void {
     this.newSymbol = '';
+    this.newShares = '';
+    this.newCostBasis = '';
     this.addError.set(null);
+  }
+
+  isCurrentHoldings(): boolean {
+    return this.watchlistName().toLowerCase() === 'current holdings';
+  }
+
+  canSubmitSymbol(): boolean {
+    if (!this.newSymbol.trim()) return false;
+    if (!this.isCurrentHoldings()) return true;
+
+    const shares = Number(this.newShares);
+    const costBasis = Number(this.newCostBasis);
+    return Number.isFinite(shares) && shares > 0 && Number.isFinite(costBasis) && costBasis > 0;
   }
 
   sortBy(column: SortColumn): void {
@@ -858,8 +901,29 @@ export class WatchlistComponent implements OnInit {
     const symbol = this.newSymbol.trim().toUpperCase();
     if (!symbol) return;
 
+    const requiresHoldingInputs = this.isCurrentHoldings();
+    const parsedShares = Number(this.newShares);
+    const parsedCostBasis = Number(this.newCostBasis);
+    const shares = requiresHoldingInputs ? parsedShares : null;
+    const costBasis = requiresHoldingInputs ? parsedCostBasis : null;
+
+    if (requiresHoldingInputs) {
+      if (!Number.isFinite(parsedShares) || parsedShares <= 0) {
+        const msg = 'Enter a valid share quantity greater than 0.';
+        this.addError.set(msg);
+        this.notificationService.showError(msg);
+        return;
+      }
+      if (!Number.isFinite(parsedCostBasis) || parsedCostBasis <= 0) {
+        const msg = 'Enter a valid cost per share greater than 0.';
+        this.addError.set(msg);
+        this.notificationService.showError(msg);
+        return;
+      }
+    }
+
     if (this.symbols().includes(symbol)) {
-      this.newSymbol = '';
+      this.clearInput();
       return;
     }
 
@@ -888,9 +952,56 @@ export class WatchlistComponent implements OnInit {
       const name = this.fmpService.getCachedCompanyName(symbol) ?? symbol;
       const volume = snap?.dailyBar?.v ?? null;
       const pegy = pegyMap.get(symbol) ?? null;
+      const normalizedCostBasis = costBasis !== null ? +costBasis.toFixed(2) : null;
+      const normalizedShares = shares !== null ? +shares.toFixed(4) : null;
+      const totalCost = normalizedCostBasis !== null && normalizedShares !== null ? +(normalizedCostBasis * normalizedShares).toFixed(2) : null;
+      const marketValue = price !== null && normalizedShares !== null ? +(price * normalizedShares).toFixed(2) : null;
+      const gainLoss = price !== null && normalizedCostBasis !== null ? +(price - normalizedCostBasis).toFixed(2) : null;
+      const gainLossPercent = gainLoss !== null && normalizedCostBasis !== null
+        ? +((gainLoss / normalizedCostBasis) * 100).toFixed(2)
+        : null;
+      const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
+      const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0
+        ? +((totalGainLoss / totalCost) * 100).toFixed(2)
+        : null;
+
+      if (normalizedCostBasis !== null) {
+        this.costBasisMap.set(symbol, normalizedCostBasis);
+      }
+      if (normalizedShares !== null) {
+        this.sharesMap.set(symbol, normalizedShares);
+      }
+
       this.symbols.update(s => [...s, symbol]);
-      this.watchlistRows.update(rows => [...rows, { symbol, name, sector, price, change, changePercent, pegy, volume, costBasis: null, shares: null, totalCost: null, marketValue: null, gainLoss: null, gainLossPercent: null, totalGainLoss: null, totalGainLossPercent: null, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null }]);
-      this.newSymbol = '';
+      this.watchlistRows.update(rows => [...rows, {
+        symbol,
+        name,
+        sector,
+        price,
+        change,
+        changePercent,
+        pegy,
+        volume,
+        costBasis: normalizedCostBasis,
+        shares: normalizedShares,
+        totalCost,
+        marketValue,
+        gainLoss,
+        gainLossPercent,
+        totalGainLoss,
+        totalGainLossPercent,
+        chartData: [],
+        chartLoading: false,
+        maData: [],
+        ma150Data: [],
+        volumeData: [],
+        volumeProfileData: [],
+        rangeHigh: null,
+        rangeLow: null,
+        swingHigh: null,
+        swingLow: null,
+      }]);
+      this.clearInput();
       this.saveToStorage();
     } finally {
       this.adding.set(false);
