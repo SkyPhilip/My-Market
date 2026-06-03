@@ -4,8 +4,10 @@ import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { AlpacaService } from '../../services/alpaca.service';
 import { FmpService } from '../../services/fmp.service';
+import { FinnhubService } from '../../services/finnhub.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaErrorBody, AlpacaBarsResponse, AlpacaSnapshotsResponse, AlpacaSnapshot } from '../../models/alpaca.models';
+import { FinnhubNewsArticle } from '../../models/finnhub.models';
 import { ChartComponent } from '../chart/chart.component';
 import { NotificationService } from '../../services/notification.service';
 import { LineData, Time } from 'lightweight-charts';
@@ -219,6 +221,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                 <th class="sortable" (click)="sortBy('totalGainLoss')">Total G/L <span class="sort-icon">{{ sortIcon('totalGainLoss') }}</span></th>
                 <th class="sortable" (click)="sortBy('totalGainLossPercent')">Total G/L % <span class="sort-icon">{{ sortIcon('totalGainLossPercent') }}</span></th>
               }
+              <th class="news-col">Docs</th>
               <th></th>
             </tr>
           </thead>
@@ -255,11 +258,20 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                     {{ row.totalGainLossPercent !== null ? ((row.totalGainLossPercent >= 0 ? '+' : '') + (row.totalGainLossPercent | number:'1.2-2') + '%') : '—' }}
                   </td>
                 }
-                <td><button class="watchlist-btn remove-btn" (click)="removeSymbol(row.symbol); $event.stopPropagation()">✕</button></td>
+                <td class="news-col">
+                  <button
+                    type="button"
+                    class="watchlist-btn news-btn"
+                    (click)="openNews(row.symbol); $event.stopPropagation()"
+                    [attr.aria-label]="'View news for ' + row.symbol"
+                    title="View news"
+                  >📰</button>
+                </td>
+                <td><button type="button" class="watchlist-btn remove-btn" (click)="removeSymbol(row.symbol); $event.stopPropagation()">✕</button></td>
               </tr>
               @if (expandedSymbols().has(row.symbol)) {
                 <tr class="chart-row">
-                  <td [attr.colspan]="hasCostBasis() ? 17 : 9">
+                  <td [attr.colspan]="hasCostBasis() ? 18 : 10">
                     @if (row.chartLoading) {
                       <p class="chart-loading">Loading chart...</p>
                     } @else {
@@ -290,6 +302,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                 <td colspan="8">Portfolio Totals</td>
                 <td></td>
                 <td></td>
+                <td></td>
                 <td class="price">{{'$'}}{{ portfolioTotalCost() | number:'1.2-2' }}</td>
                 <td class="price">{{'$'}}{{ portfolioMarketValue() | number:'1.2-2' }}</td>
                 <td></td>
@@ -305,6 +318,54 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
             </tfoot>
           }
         </table>
+        @if (newsPanelOpen()) {
+          <aside class="news-panel" role="dialog" aria-modal="false" [attr.aria-labelledby]="newsPanelTitleId()">
+            <header class="news-panel__header">
+              <div>
+                <p class="news-panel__eyebrow">Ticker brief</p>
+                <h3 [id]="newsPanelTitleId()">{{ newsSymbol() }} News</h3>
+              </div>
+              <button type="button" class="news-panel__close" (click)="closeNewsPanel()" aria-label="Close documentation panel">✕</button>
+            </header>
+            <div class="news-panel__content">
+              @if (newsLoading()) {
+                <p class="news-panel__state">Loading recent items...</p>
+              } @else if (newsLoadError()) {
+                <p class="news-panel__state news-panel__state--error">{{ newsLoadError() }}</p>
+              } @else if (newsArticles().length) {
+                @for (article of newsArticles(); track article.url) {
+                  <article class="news-item">
+                    @if (article.image) {
+                      <img class="news-item__image" [src]="article.image" [alt]="article.headline" loading="lazy" />
+                    }
+                    <div class="news-item__body">
+                      <a
+                        class="news-item__headline"
+                        [href]="article.url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >{{ article.headline }}</a>
+                      <p class="news-item__summary">{{ article.summary || 'No summary available.' }}</p>
+                      <div class="news-item__meta-row">
+                        <span class="news-item__source">{{ article.source }}</span>
+                        <span class="news-item__age">{{ relativeTime(article.datetime) }}</span>
+                        <a
+                          class="news-item__open"
+                          [href]="article.url"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          [attr.aria-label]="'Open story for ' + article.headline"
+                        >Open ↗</a>
+                      </div>
+                    </div>
+                  </article>
+                }
+              } @else {
+                <p class="news-panel__state">No recent news found for {{ newsSymbol() }}.</p>
+              }
+            </div>
+          </aside>
+        }
       } @else {
         <p class="loading">No items found.</p>
       }
@@ -578,6 +639,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
 export class WatchlistComponent implements OnInit {
   private alpacaService = inject(AlpacaService);
   private fmpService = inject(FmpService);
+  private finnhubService = inject(FinnhubService);
   private notificationService = inject(NotificationService);
 
   title = input.required<string>();
@@ -632,6 +694,13 @@ export class WatchlistComponent implements OnInit {
   readonly showMovingAverage = signal(false);
   readonly showMovingAverage150 = signal(false);
   readonly showRangeLevels = signal(false);
+  readonly newsPanelOpen = signal(false);
+  readonly newsSymbol = signal<string>('');
+  readonly newsArticles = signal<FinnhubNewsArticle[]>([]);
+  readonly newsLoading = signal(false);
+  readonly newsLoadError = signal<string | null>(null);
+
+  private newsRequestSeq = 0;
 
   sortedWatchlistRows = computed(() => {
     const rows = this.watchlistRows();
@@ -904,6 +973,72 @@ export class WatchlistComponent implements OnInit {
 
   toggleMovingAverage150(): void {
     this.showMovingAverage150.set(!this.showMovingAverage150());
+  }
+
+  async openNews(symbol: string): Promise<void> {
+    const normalizedSymbol = symbol.trim().toUpperCase();
+    if (!normalizedSymbol) return;
+
+    const requestSeq = ++this.newsRequestSeq;
+    this.newsPanelOpen.set(true);
+    this.newsSymbol.set(normalizedSymbol);
+    this.newsArticles.set([]);
+    this.newsLoadError.set(null);
+    this.newsLoading.set(true);
+
+    try {
+      const articles = await firstValueFrom(this.finnhubService.getNews(normalizedSymbol));
+      if (requestSeq !== this.newsRequestSeq) return;
+      this.newsArticles.set(articles);
+    } catch (error) {
+      if (requestSeq !== this.newsRequestSeq) return;
+      const message = error instanceof Error ? error.message : `Unable to load documentation for ${normalizedSymbol}.`;
+      this.newsLoadError.set(message);
+      this.newsArticles.set([]);
+    } finally {
+      if (requestSeq === this.newsRequestSeq) {
+        this.newsLoading.set(false);
+      }
+    }
+  }
+
+  closeNewsPanel(): void {
+    this.newsRequestSeq += 1;
+    this.newsPanelOpen.set(false);
+    this.newsLoading.set(false);
+    this.newsSymbol.set('');
+    this.newsArticles.set([]);
+    this.newsLoadError.set(null);
+  }
+
+  newsPanelTitleId(): string {
+    return `${this.watchlistName().replace(/\s+/g, '-').toLowerCase()}-docs-panel-title`;
+  }
+
+  relativeTime(epochSeconds: number): string {
+    if (!Number.isFinite(epochSeconds) || epochSeconds <= 0) return 'Unknown time';
+
+    const diffMs = Date.now() - (epochSeconds * 1000);
+    const absMs = Math.max(0, diffMs);
+    const minutes = Math.floor(absMs / 60000);
+
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+
+    const weeks = Math.floor(days / 7);
+    if (weeks < 5) return `${weeks}w ago`;
+
+    const months = Math.floor(days / 30);
+    if (months < 12) return `${months}mo ago`;
+
+    const years = Math.floor(days / 365);
+    return `${years}y ago`;
   }
 
   private async loadChart(symbol: string): Promise<void> {

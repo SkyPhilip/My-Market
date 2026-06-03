@@ -10,6 +10,7 @@ function getApiSource(url: string): string {
     if (host.includes('data.alpaca.markets')) return 'Alpaca Data API';
     if (host.includes('paper-api.alpaca.markets')) return 'Alpaca Trading API';
     if (host.includes('financialmodelingprep.com')) return 'FMP API';
+    if (host.includes('finnhub.io')) return 'Finnhub API';
     return host || 'Unknown API';
   } catch {
     return 'Unknown API';
@@ -84,13 +85,15 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
       console.log('ErrorInterceptor caught:', req.url, 'status:', error.status, 'body:', error.error);
       const isAlpacaRequest = req.url.includes('alpaca.markets');
       const isFmpRequest = req.url.includes('financialmodelingprep.com');
+      const isFinnhubRequest = req.url.includes('finnhub.io');
       const isLoginRequest = isAlpacaRequest && req.url.includes('/v2/account') && !authService.isAuthenticated();
       const isGracefullyHandledFmpRead = isFmpRequest && req.method === 'GET';
+      const isGracefullyHandledFinnhubRead = isFinnhubRequest && req.method === 'GET';
 
       if (error.status === 401 && isAlpacaRequest && !isLoginRequest) {
         console.log('ErrorInterceptor: credentials invalid, redirecting to login');
         authService.logout();
-      } else if (!isLoginRequest && !isGracefullyHandledFmpRead) {
+      } else if (!isLoginRequest && !isGracefullyHandledFmpRead && !isGracefullyHandledFinnhubRead) {
         const message = buildErrorMessage(req.url, error);
         console.log('ErrorInterceptor: showing notification:', message);
         notificationService.showError(message);

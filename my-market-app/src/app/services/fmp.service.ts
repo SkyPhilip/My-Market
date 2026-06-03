@@ -3,11 +3,12 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, from, of, forkJoin } from 'rxjs';
 import { map, tap, mergeMap, toArray, catchError } from 'rxjs/operators';
 import { FmpAnalystEstimate, FmpProfile, FmpRatiosTtm, FmpScreenerResult, FmpSectorPerformance } from '../models/fmp.models';
+import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class FmpService {
   readonly #baseUrl = 'https://financialmodelingprep.com/stable';
-  readonly #apiKey = 'sCcFQ6sVkljriewJXLu1RGznuKSaJ6pE';
+  readonly #apiKey = environment.apiKeys.fmp;
   readonly #companyNameFallbacks: Record<string, string> = {
     GOOGL: 'Alphabet Inc. Class A',
     GOOG: 'Alphabet Inc. Class C',
