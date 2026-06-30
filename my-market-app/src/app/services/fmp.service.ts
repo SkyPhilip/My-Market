@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, from, of, forkJoin } from 'rxjs';
 import { map, tap, mergeMap, toArray, catchError } from 'rxjs/operators';
-import { FmpAnalystEstimate, FmpProfile, FmpRatiosTtm, FmpScreenerResult, FmpSectorPerformance } from '../models/fmp.models';
+import { FmpAnalystEstimate, FmpPeer, FmpProfile, FmpRatiosTtm, FmpScreenerResult, FmpSectorPerformance } from '../models/fmp.models';
 import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -29,6 +29,7 @@ export class FmpService {
   #companyNameCache = new Map<string, string>();
   #etfOrFundCache = new Map<string, boolean>();
   #pegyCache = new Map<string, number | null>();
+  #peersCache = new Map<string, string | null>();
 
   constructor(private http: HttpClient) {
     this.#loadCacheFromStorage();
@@ -54,6 +55,32 @@ export class FmpService {
           this.#etfOrFundCache.set(p.symbol, Boolean(p.isEtf || p.isFund));
         }
         this.#saveCacheToStorage();
+      })
+    );
+  }
+
+  getClosestPeer(symbol: string): Observable<string | null> {
+    const upper = symbol.trim().toUpperCase();
+    if (!upper) return of(null);
+    if (this.#peersCache.has(upper)) {
+      return of(this.#peersCache.get(upper) ?? null);
+    }
+    return this.http.get<FmpPeer[]>(`${this.#baseUrl}/stock-peers`, {
+      params: { symbol: upper, apikey: this.#apiKey }
+    }).pipe(
+      map(peers => (peers ?? []).find(p => {
+        const s = (p.symbol ?? '').toUpperCase();
+        return s && s !== upper;
+      }) ?? null),
+      catchError(() => of<FmpPeer | null>(null)),
+      map(peer => {
+        const peerSymbol = peer?.symbol ? peer.symbol.toUpperCase() : null;
+        if (peerSymbol && peer?.companyName) {
+          this.#companyNameCache.set(peerSymbol, peer.companyName);
+        }
+        this.#peersCache.set(upper, peerSymbol);
+        this.#saveCacheToStorage();
+        return peerSymbol;
       })
     );
   }
@@ -200,6 +227,12 @@ export class FmpService {
         const entries: [string, boolean][] = JSON.parse(etfStored);
         this.#etfOrFundCache = new Map(entries);
       }
+
+      const peersStored = sessionStorage.getItem('fmp_peers_cache');
+      if (peersStored) {
+        const entries: [string, string | null][] = JSON.parse(peersStored);
+        this.#peersCache = new Map(entries);
+      }
     } catch {
       // ignore corrupt cache
     }
@@ -209,6 +242,7 @@ export class FmpService {
     sessionStorage.setItem('fmp_sector_cache', JSON.stringify([...this.#sectorCache.entries()]));
     sessionStorage.setItem('fmp_name_cache', JSON.stringify([...this.#companyNameCache.entries()]));
     sessionStorage.setItem('fmp_etf_cache', JSON.stringify([...this.#etfOrFundCache.entries()]));
+    sessionStorage.setItem('fmp_peers_cache', JSON.stringify([...this.#peersCache.entries()]));
   }
 
   clearCache(): void {
@@ -216,8 +250,10 @@ export class FmpService {
     this.#companyNameCache.clear();
     this.#etfOrFundCache.clear();
     this.#pegyCache.clear();
+    this.#peersCache.clear();
     sessionStorage.removeItem('fmp_sector_cache');
     sessionStorage.removeItem('fmp_name_cache');
     sessionStorage.removeItem('fmp_etf_cache');
+    sessionStorage.removeItem('fmp_peers_cache');
   }
 }

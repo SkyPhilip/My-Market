@@ -105,6 +105,8 @@ interface WatchlistRow {
   change: number | null;
   changePercent: number | null;
   pegy: number | null;
+  pegyLoading: boolean;
+  pegyLoaded: boolean;
   costBasis: number | null;
   shares: number | null;
   totalCost: number | null;
@@ -124,6 +126,10 @@ interface WatchlistRow {
   rangeLow: number | null;
   swingHigh: number | null;
   swingLow: number | null;
+  peerSymbol: string | null;
+  peerName: string | null;
+  peerData: LineData<Time>[];
+  peerLoading: boolean;
 }
 
 type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'totalGainLossPercent';
@@ -250,7 +256,17 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
           <tbody>
             @for (row of sortedWatchlistRows(); track row.symbol) {
               <tr class="clickable-row" [class.expanded]="expandedSymbols().has(row.symbol)" (click)="toggleChart(row.symbol)">
-                <td class="symbol">{{ row.symbol }}</td>
+                <td class="symbol">
+                  <span class="symbol-text">{{ row.symbol }}</span>
+                  <button
+                    type="button"
+                    class="peer-btn"
+                    [class.active]="peerSymbols().has(row.symbol)"
+                    [class.loading]="row.peerLoading"
+                    (click)="togglePeer(row.symbol); $event.stopPropagation()"
+                    [title]="row.peerName ? ('Peer: ' + row.peerName) : (row.peerSymbol ? ('Peer: ' + row.peerSymbol) : 'Show closest peer overlay')"
+                  >{{ row.peerLoading ? '…' : (row.peerSymbol ?? 'Peer') }}</button>
+                </td>
                 <td class="name">{{ row.name }}</td>
                 <td class="sector">{{ row.sector }}</td>
                 <td class="price">{{ row.price !== null ? ('$' + (row.price | number:'1.2-2')) : '—' }}</td>
@@ -261,7 +277,15 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                   {{ row.changePercent !== null ? ((row.changePercent >= 0 ? '+' : '') + (row.changePercent | number:'1.2-2') + '%') : '—' }}
                 </td>
                 <td class="volume">{{ formatVolume(row.volume) }}</td>
-                <td class="price">{{ row.pegy !== null ? (row.pegy | number:'1.3-3') : 'N/A' }}</td>
+                <td class="price">
+                  @if (row.pegyLoading) {
+                    <span class="pegy-pending">…</span>
+                  } @else if (row.pegyLoaded) {
+                    <button type="button" class="pegy-btn computed" [title]="pegyTooltip" (click)="loadPegy(row.symbol); $event.stopPropagation()">{{ row.pegy !== null ? (row.pegy | number:'1.3-3') : 'N/A' }}</button>
+                  } @else {
+                    <button type="button" class="pegy-btn" [title]="pegyTooltip" (click)="loadPegy(row.symbol); $event.stopPropagation()">PEGY</button>
+                  }
+                </td>
                 @if (hasCostBasis()) {
                   <td class="shares">{{ row.shares !== null ? (row.shares | number:'1.0-4') : '—' }}</td>
                   <td class="price">{{ row.costBasis !== null ? ('$' + (row.costBasis | number:'1.2-2')) : '—' }}</td>
@@ -311,6 +335,8 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                         [rangeLow]="row.rangeLow"
                         [swingHigh]="row.swingHigh"
                         [swingLow]="row.swingLow"
+                        [peerData]="row.peerData"
+                        [showPeer]="peerSymbols().has(row.symbol)"
                       ></app-chart>
                     }
                   </td>
@@ -717,6 +743,7 @@ export class WatchlistComponent implements OnInit {
   sortColumn = signal<SortColumn | null>(null);
   sortDirection = signal<SortDirection>('asc');
   expandedSymbols = signal<Set<string>>(new Set());
+  peerSymbols = signal<Set<string>>(new Set());
   readonly timeRanges: TimeRange[] = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'All'];
   readonly selectedRange = signal<TimeRange>('1D');
   readonly showMovingAverage = signal(false);
@@ -866,7 +893,6 @@ export class WatchlistComponent implements OnInit {
 
       const snapResult = await this.fetchSnapshots(initialSymbols);
       if (!snapResult.okRes?.body) return;
-      const pegyMap = await firstValueFrom(this.fmpService.getPegy(initialSymbols));
 
       const snapshots = snapResult.okRes.body;
       const rows: WatchlistRow[] = initialSymbols.map(symbol => {
@@ -886,8 +912,7 @@ export class WatchlistComponent implements OnInit {
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        const pegy = pegyMap.get(symbol) ?? null;
-        return { symbol, name, sector, price, change, changePercent, pegy, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null };
+        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -930,9 +955,8 @@ export class WatchlistComponent implements OnInit {
     this.adding.set(true);
     this.addError.set(null);
     try {
-      const [snapResult, pegyMap] = await Promise.all([
+      const [snapResult] = await Promise.all([
         firstValueFrom(this.alpacaService.getSnapshots([symbol])),
-        firstValueFrom(this.fmpService.getPegy([symbol])),
         this.fmpService.getCachedSector(symbol)
           ? Promise.resolve()
           : firstValueFrom(this.fmpService.getProfiles([symbol])),
@@ -951,7 +975,6 @@ export class WatchlistComponent implements OnInit {
       const sector = this.fmpService.getCachedSector(symbol) ?? '\u2014';
       const name = this.fmpService.getCachedCompanyName(symbol) ?? symbol;
       const volume = snap?.dailyBar?.v ?? null;
-      const pegy = pegyMap.get(symbol) ?? null;
       const normalizedCostBasis = costBasis !== null ? +costBasis.toFixed(2) : null;
       const normalizedShares = shares !== null ? +shares.toFixed(4) : null;
       const totalCost = normalizedCostBasis !== null && normalizedShares !== null ? +(normalizedCostBasis * normalizedShares).toFixed(2) : null;
@@ -980,7 +1003,9 @@ export class WatchlistComponent implements OnInit {
         price,
         change,
         changePercent,
-        pegy,
+        pegy: null,
+        pegyLoading: false,
+        pegyLoaded: false,
         volume,
         costBasis: normalizedCostBasis,
         shares: normalizedShares,
@@ -1000,6 +1025,10 @@ export class WatchlistComponent implements OnInit {
         rangeLow: null,
         swingHigh: null,
         swingLow: null,
+        peerSymbol: null,
+        peerName: null,
+        peerData: [],
+        peerLoading: false,
       }]);
       this.clearInput();
       this.saveToStorage();
@@ -1060,6 +1089,106 @@ export class WatchlistComponent implements OnInit {
     } else {
       this.expandedSymbols.update(s => new Set(s).add(symbol));
       this.loadChart(symbol);
+    }
+  }
+
+  readonly pegyTooltip = 'PEGY = (P/E) \u00f7 (EPS growth % + dividend yield %)\nLower is cheaper relative to growth + income.';
+
+  async loadPegy(symbol: string): Promise<void> {
+    this.watchlistRows.update(rows => rows.map(r =>
+      r.symbol === symbol ? { ...r, pegyLoading: true } : r
+    ));
+    try {
+      const pegyMap = await firstValueFrom(this.fmpService.getPegy([symbol]));
+      const pegy = pegyMap.get(symbol) ?? null;
+      this.watchlistRows.update(rows => rows.map(r =>
+        r.symbol === symbol ? { ...r, pegy, pegyLoaded: true, pegyLoading: false } : r
+      ));
+    } catch {
+      this.watchlistRows.update(rows => rows.map(r =>
+        r.symbol === symbol ? { ...r, pegyLoading: false } : r
+      ));
+    }
+  }
+
+  togglePeer(symbol: string): void {
+    if (this.peerSymbols().has(symbol)) {      this.peerSymbols.update(s => { const next = new Set(s); next.delete(symbol); return next; });
+      this.watchlistRows.update(rows => rows.map(r =>
+        r.symbol === symbol ? { ...r, peerData: [] } : r
+      ));
+      return;
+    }
+    this.peerSymbols.update(s => new Set(s).add(symbol));
+    if (!this.expandedSymbols().has(symbol)) {
+      this.expandedSymbols.update(s => new Set(s).add(symbol));
+      this.loadChart(symbol);
+    } else {
+      this.loadPeer(symbol);
+    }
+  }
+
+  private async loadPeer(symbol: string): Promise<void> {
+    const row = this.watchlistRows().find(r => r.symbol === symbol);
+    const mainData = row?.chartData ?? [];
+    if (!mainData.length) return;
+
+    this.watchlistRows.update(rows => rows.map(r =>
+      r.symbol === symbol ? { ...r, peerLoading: true, peerData: [] } : r
+    ));
+
+    const range = this.selectedRange();
+    const config = RANGE_CONFIGS[range];
+    const isIntraday = range === '1D' || range === '5D' || range === '1M';
+
+    try {
+      const peerSymbol = await firstValueFrom(this.fmpService.getClosestPeer(symbol));
+      if (!peerSymbol) {
+        console.warn(`No peer found for ${symbol}.`);
+        this.watchlistRows.update(rows => rows.map(r =>
+          r.symbol === symbol ? { ...r, peerSymbol: null, peerName: null, peerData: [], peerLoading: false } : r
+        ));
+        return;
+      }
+
+      let peerName = this.fmpService.getCachedCompanyName(peerSymbol) ?? null;
+      if (!peerName) {
+        try {
+          const profiles = await firstValueFrom(this.fmpService.getProfiles([peerSymbol]));
+          peerName = profiles[0]?.companyName ?? this.fmpService.getCachedCompanyName(peerSymbol) ?? null;
+        } catch {
+          // company name is best-effort; tooltip falls back to the symbol
+        }
+      }
+
+      const result = await firstValueFrom(
+        this.alpacaService.getBars(peerSymbol, config.timeframe, config.getStart())
+      );
+      const peerBars = result?.body?.bars ?? [];
+      if (!peerBars.length) {
+        console.warn(`Peer ${peerSymbol} for ${symbol} has no price data on Alpaca.`);
+        this.watchlistRows.update(rows => rows.map(r =>
+          r.symbol === symbol ? { ...r, peerSymbol, peerName, peerData: [], peerLoading: false } : r
+        ));
+        return;
+      }
+
+      const mainStart = mainData[0].value;
+      const peerBase = peerBars[0].c;
+      const peerData: LineData<Time>[] = peerBars.map(bar => {
+        const time = isIntraday
+          ? ((Math.floor(new Date(bar.t).getTime() / 1000) - new Date(bar.t).getTimezoneOffset() * 60) as Time)
+          : (bar.t.split('T')[0] as Time);
+        const value = peerBase ? +(mainStart * (bar.c / peerBase)).toFixed(4) : mainStart;
+        return { time, value };
+      });
+
+      this.watchlistRows.update(rows => rows.map(r =>
+        r.symbol === symbol ? { ...r, peerSymbol, peerName, peerData, peerLoading: false } : r
+      ));
+    } catch {
+      this.watchlistRows.update(rows => rows.map(r =>
+        r.symbol === symbol ? { ...r, peerLoading: false } : r
+      ));
     }
   }
 
@@ -1229,6 +1358,9 @@ export class WatchlistComponent implements OnInit {
           swingLow: rangeLevels?.swingLow ?? null,
         } : r
       ));
+      if (this.peerSymbols().has(symbol)) {
+        this.loadPeer(symbol);
+      }
     } catch {
       this.watchlistRows.update(rows => rows.map(r =>
         r.symbol === symbol ? { ...r, chartLoading: false } : r

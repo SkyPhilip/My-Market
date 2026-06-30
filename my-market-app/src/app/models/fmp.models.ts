@@ -20,6 +20,13 @@ export interface FmpRatiosTtm {
   dividendYieldTTM?: number;
 }
 
+export interface FmpPeer {
+  symbol: string;
+  companyName?: string;
+  price?: number;
+  mktCap?: number;
+}
+
 export interface FmpIncomeStatement {
   date: string;
   symbol: string;

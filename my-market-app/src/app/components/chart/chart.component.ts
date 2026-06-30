@@ -136,6 +136,8 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() rangeLow: number | null = null;
   @Input() swingHigh: number | null = null;
   @Input() swingLow: number | null = null;
+  @Input() peerData: LineData<Time>[] = [];
+  @Input() showPeer = false;
 
   private chart: IChartApi | null = null;
   private series: ISeriesApi<'Line'> | null = null;
@@ -146,6 +148,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   private rangeLowSeries: ISeriesApi<'Line'> | null = null;
   private swingHighSeries: ISeriesApi<'Line'> | null = null;
   private swingLowSeries: ISeriesApi<'Line'> | null = null;
+  private peerSeries: ISeriesApi<'Line'> | null = null;
   @ViewChild('volumeProfile') volumeProfile!: ElementRef<HTMLDivElement>;
 
   ngAfterViewInit(): void {
@@ -163,6 +166,9 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     }
     if ((changes['ma150Data'] || changes['showMovingAverage150']) && this.ma150Series) {
       this.updateMovingAverage150Series();
+    }
+    if ((changes['peerData'] || changes['showPeer']) && this.peerSeries) {
+      this.updatePeerSeries();
     }
     if (changes['volumeData'] && this.volumeSeries) {
       this.volumeSeries.setData(this.volumeData);
@@ -224,6 +230,14 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       lineWidth: 1,
       lastValueVisible: false,
       priceLineVisible: false,
+    });
+
+    this.peerSeries = this.chart.addSeries(LineSeries, {
+      color: '#28a745',
+      lineWidth: 2,
+      lastValueVisible: false,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
     });
 
     this.volumeSeries = this.chart.addSeries(HistogramSeries, {
@@ -288,6 +302,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
 
     this.updateMovingAverageSeries();
     this.updateMovingAverage150Series();
+    this.updatePeerSeries();
 
     if (this.volumeData.length) {
       this.volumeSeries.setData(this.volumeData);
@@ -407,6 +422,17 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     }
 
     this.ma150Series.setData(this.ma150Data);
+  }
+
+  private updatePeerSeries(): void {
+    if (!this.peerSeries) return;
+
+    if (!this.showPeer || !this.peerData.length) {
+      this.peerSeries.setData([]);
+      return;
+    }
+
+    this.peerSeries.setData(this.peerData);
   }
 
   private renderVolumeProfile(): void {
