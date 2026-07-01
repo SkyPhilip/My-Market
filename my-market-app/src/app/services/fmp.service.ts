@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, from, of, forkJoin } from 'rxjs';
 import { map, tap, mergeMap, toArray, catchError, switchMap } from 'rxjs/operators';
-import { FmpAnalystEstimate, FmpInstitutionalSummary, FmpPeer, FmpProfile, FmpRatiosTtm, FmpScreenerResult, FmpSectorPerformance } from '../models/fmp.models';
+import { FmpAnalystEstimate, FmpPeer, FmpProfile, FmpRatiosTtm, FmpScreenerResult, FmpSectorPerformance } from '../models/fmp.models';
 import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -30,8 +30,6 @@ export class FmpService {
   #etfOrFundCache = new Map<string, boolean>();
   #pegyCache = new Map<string, number | null>();
   #peersCache = new Map<string, string | null>();
-  #instCache = new Map<string, FmpInstitutionalSummary | null>();
-  #instQuarter: { year: number; quarter: number } | null = null;
 
   constructor(private http: HttpClient) {
     this.#loadCacheFromStorage();
@@ -70,11 +68,26 @@ export class FmpService {
     return this.http.get<FmpPeer[]>(`${this.#baseUrl}/stock-peers`, {
       params: { symbol: upper, apikey: this.#apiKey }
     }).pipe(
-      map(peers => (peers ?? []).find(p => {
-        const s = (p.symbol ?? '').toUpperCase();
-        return s && s !== upper;
-      }) ?? null),
-      catchError(() => of<FmpPeer | null>(null)),
+      catchError(() => of<FmpPeer[]>([])),
+      switchMap(peers => {
+        const list = peers ?? [];
+        const candidates = list.filter(p => p.symbol && p.symbol.toUpperCase() !== upper);
+        if (!candidates.length) return of<FmpPeer | null>(null);
+
+        // "Closest" = nearest market cap to the target. Prefer a self entry in the
+        // peers list for the target's cap; otherwise fetch its profile once.
+        const selfEntry = list.find(p => (p.symbol ?? '').toUpperCase() === upper);
+        const targetCap$ = typeof selfEntry?.mktCap === 'number' && Number.isFinite(selfEntry.mktCap)
+          ? of(selfEntry.mktCap as number)
+          : this.http.get<FmpProfile[]>(`${this.#baseUrl}/profile`, {
+              params: { symbol: upper, apikey: this.#apiKey }
+            }).pipe(
+              map(arr => arr?.[0]?.marketCap ?? null),
+              catchError(() => of<number | null>(null)),
+            );
+
+        return targetCap$.pipe(map(targetCap => this.#pickNearestByMarketCap(candidates, targetCap)));
+      }),
       map(peer => {
         const peerSymbol = peer?.symbol ? peer.symbol.toUpperCase() : null;
         if (peerSymbol && peer?.companyName) {
@@ -87,69 +100,20 @@ export class FmpService {
     );
   }
 
+  #pickNearestByMarketCap(candidates: FmpPeer[], targetCap: number | null): FmpPeer | null {
+    if (!candidates.length) return null;
+    const withCap = candidates.filter(p => typeof p.mktCap === 'number' && Number.isFinite(p.mktCap));
+    // No basis for comparison — fall back to FMP's first candidate.
+    if (targetCap === null || !withCap.length) return candidates[0];
+    return withCap.reduce((best, p) =>
+      Math.abs((p.mktCap as number) - targetCap) < Math.abs((best.mktCap as number) - targetCap) ? p : best
+    );
+  }
+
   getSectorPerformance(): Observable<FmpSectorPerformance[]> {
     return this.http.get<FmpSectorPerformance[]>(`${this.#baseUrl}/sector-performance-snapshot`, {
       params: { apikey: this.#apiKey }
     });
-  }
-
-  getInstitutionalSummary(symbol: string): Observable<FmpInstitutionalSummary | null> {
-    const upper = symbol.trim().toUpperCase();
-    if (!upper) return of(null);
-    if (this.#instCache.has(upper)) {
-      return of(this.#instCache.get(upper) ?? null);
-    }
-    const quarters = this.#instQuarter ? [this.#instQuarter] : this.#recentQuarters();
-    return this.#tryInstitutionalQuarters(upper, quarters, 0).pipe(
-      tap(res => {
-        this.#instCache.set(upper, res);
-        this.#saveCacheToStorage();
-      })
-    );
-  }
-
-  #tryInstitutionalQuarters(
-    symbol: string,
-    quarters: { year: number; quarter: number }[],
-    idx: number,
-  ): Observable<FmpInstitutionalSummary | null> {
-    if (idx >= quarters.length) return of(null);
-    const { year, quarter } = quarters[idx];
-    return this.http.get<FmpInstitutionalSummary[]>(
-      `${this.#baseUrl}/institutional-ownership/symbol-positions-summary`,
-      { params: { symbol, year: String(year), quarter: String(quarter), apikey: this.#apiKey } }
-    ).pipe(
-      map(arr => arr?.[0] ?? null),
-      catchError(() => of<FmpInstitutionalSummary | null>(null)),
-      switchMap(res => {
-        if (res) {
-          if (!this.#instQuarter) this.#instQuarter = quarters[idx];
-          return of(res);
-        }
-        return this.#tryInstitutionalQuarters(symbol, quarters, idx + 1);
-      })
-    );
-  }
-
-  #recentQuarters(): { year: number; quarter: number }[] {
-    // 13F filings are due ~45 days after quarter-end; find the most recent COMPLETED quarter.
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 45);
-    const quarterEndMonths = [2, 5, 8, 11]; // Mar, Jun, Sep, Dec (0-based)
-    let year = cutoff.getUTCFullYear();
-    let quarter = 4;
-    for (let i = quarterEndMonths.length - 1; i >= 0; i--) {
-      const endOfQuarter = new Date(Date.UTC(year, quarterEndMonths[i] + 1, 0));
-      if (endOfQuarter <= cutoff) { quarter = i + 1; break; }
-      if (i === 0) { year -= 1; quarter = 4; }
-    }
-    const list: { year: number; quarter: number }[] = [];
-    for (let i = 0; i < 4; i++) {
-      list.push({ year, quarter });
-      quarter -= 1;
-      if (quarter < 1) { quarter = 4; year -= 1; }
-    }
-    return list;
   }
 
   getCachedSector(symbol: string): string | undefined {
@@ -294,12 +258,6 @@ export class FmpService {
         const entries: [string, string | null][] = JSON.parse(peersStored);
         this.#peersCache = new Map(entries);
       }
-
-      const instStored = sessionStorage.getItem('fmp_inst_cache');
-      if (instStored) {
-        const entries: [string, FmpInstitutionalSummary | null][] = JSON.parse(instStored);
-        this.#instCache = new Map(entries);
-      }
     } catch {
       // ignore corrupt cache
     }
@@ -310,7 +268,6 @@ export class FmpService {
     sessionStorage.setItem('fmp_name_cache', JSON.stringify([...this.#companyNameCache.entries()]));
     sessionStorage.setItem('fmp_etf_cache', JSON.stringify([...this.#etfOrFundCache.entries()]));
     sessionStorage.setItem('fmp_peers_cache', JSON.stringify([...this.#peersCache.entries()]));
-    sessionStorage.setItem('fmp_inst_cache', JSON.stringify([...this.#instCache.entries()]));
   }
 
   clearCache(): void {
@@ -319,12 +276,9 @@ export class FmpService {
     this.#etfOrFundCache.clear();
     this.#pegyCache.clear();
     this.#peersCache.clear();
-    this.#instCache.clear();
-    this.#instQuarter = null;
     sessionStorage.removeItem('fmp_sector_cache');
     sessionStorage.removeItem('fmp_name_cache');
     sessionStorage.removeItem('fmp_etf_cache');
     sessionStorage.removeItem('fmp_peers_cache');
-    sessionStorage.removeItem('fmp_inst_cache');
   }
 }

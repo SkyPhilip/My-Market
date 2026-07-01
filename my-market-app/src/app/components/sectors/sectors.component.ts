@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { AccordionGroup, AccordionTrigger, AccordionPanel, AccordionContent } from '@angular/aria/accordion';
 import { firstValueFrom } from 'rxjs';
 import { AlpacaService } from '../../services/alpaca.service';
-import { FmpService } from '../../services/fmp.service';
 import { AlpacaSnapshot } from '../../models/alpaca.models';
 import { SECTOR_SYMBOLS } from '../../data/sector-symbols';
 
@@ -13,13 +12,6 @@ interface SectorStock {
   change: number | null;
   changePercent: number | null;
   volume: number;
-  ownershipPercent: number | null;
-  ownershipPercentChange: number | null;
-  sharesChange: number | null;
-  investorsChange: number | null;
-  inst13fDate: string | null;
-  inst13fLoading: boolean;
-  inst13fLoaded: boolean;
 }
 
 interface SectorData {
@@ -77,7 +69,6 @@ interface SectorData {
                           <th class="right">Change</th>
                           <th class="right">Change %</th>
                           <th class="right">Volume</th>
-                          <th class="right" [title]="inst13fTooltip">Inst. %</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -92,24 +83,6 @@ interface SectorData {
                               {{ stock.changePercent !== null ? ((stock.changePercent >= 0 ? '+' : '') + (stock.changePercent | number:'1.2-2') + '%') : '—' }}
                             </td>
                             <td class="right">{{ stock.volume | number:'1.0-0' }}</td>
-                            <td class="right">
-                              @if (stock.inst13fLoading) {
-                                <span class="inst-pending">…</span>
-                              } @else if (stock.inst13fLoaded) {
-                                @if (stock.ownershipPercent !== null) {
-                                  <span [title]="inst13fRowTooltip(stock)">
-                                    {{ stock.ownershipPercent | number:'1.1-1' }}%
-                                    <span class="delta" [class.positive]="(stock.ownershipPercentChange ?? 0) >= 0" [class.negative]="(stock.ownershipPercentChange ?? 0) < 0">
-                                      {{ (stock.ownershipPercentChange ?? 0) >= 0 ? '▲' : '▼' }}{{ (stock.ownershipPercentChange ?? 0) >= 0 ? '+' : '' }}{{ stock.ownershipPercentChange | number:'1.2-2' }}
-                                    </span>
-                                  </span>
-                                } @else {
-                                  <span class="inst-pending">N/A</span>
-                                }
-                              } @else {
-                                <button type="button" class="inst-btn" [title]="inst13fTooltip" (click)="loadInstitutional(sector, stock.symbol)">13F</button>
-                              }
-                            </td>
                           </tr>
                         }
                       </tbody>
@@ -243,42 +216,10 @@ interface SectorData {
       cursor: pointer;
       font-size: 12px;
     }
-    .inst-btn {
-      background: transparent;
-      border: 1px solid #4a9eff;
-      color: #4a9eff;
-      padding: 1px 7px;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 11px;
-      font-weight: 600;
-    }
-    .inst-btn:hover {
-      background: rgba(74, 158, 255, 0.12);
-    }
-    .inst-pending {
-      color: #8892b0;
-    }
-    .delta {
-      font-size: 11px;
-      margin-left: 4px;
-    }
-    .delta.positive {
-      color: #28a745;
-    }
-    .delta.negative {
-      color: #dc3545;
-    }
   `]
 })
 export class SectorsComponent implements OnInit {
   private alpacaService = inject(AlpacaService);
-  private fmpService = inject(FmpService);
-
-  readonly inst13fTooltip =
-    'Institutional ownership from quarterly SEC 13F filings (≈45-day lag).\n' +
-    'Shows % of shares held by institutions and the quarter-over-quarter change.\n' +
-    'Click 13F to load for a stock.';
 
   sectors = signal<string[]>([]);
   loadingSectors = signal(true);
@@ -317,15 +258,14 @@ export class SectorsComponent implements OnInit {
 
       const stocks: SectorStock[] = symbols
         .map(symbol => {
-          const inst13f = { ownershipPercent: null, ownershipPercentChange: null, sharesChange: null, investorsChange: null, inst13fDate: null, inst13fLoading: false, inst13fLoaded: false };
           const snap: AlpacaSnapshot | undefined = snapshots[symbol];
-          if (!snap) return { symbol, price: null, change: null, changePercent: null, volume: 0, ...inst13f };
+          if (!snap) return { symbol, price: null, change: null, changePercent: null, volume: 0 };
           const price = snap.latestTrade?.p ?? snap.dailyBar?.c ?? null;
           const prevClose = snap.prevDailyBar?.c ?? null;
           const change = price && prevClose ? +(price - prevClose).toFixed(2) : null;
           const changePercent = price && prevClose ? +((change! / prevClose) * 100).toFixed(2) : null;
           const volume = snap.dailyBar?.v ?? 0;
-          return { symbol, price, change, changePercent, volume, ...inst13f };
+          return { symbol, price, change, changePercent, volume };
         })
         .sort((a, b) => b.volume - a.volume);
 
@@ -350,45 +290,6 @@ export class SectorsComponent implements OnInit {
     if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
     if (value >= 1e3) return `${(value / 1e3).toFixed(0)}K`;
     return value.toLocaleString();
-  }
-
-  async loadInstitutional(sector: string, symbol: string): Promise<void> {
-    this.#updateStock(sector, symbol, { inst13fLoading: true });
-    try {
-      const s = await firstValueFrom(this.fmpService.getInstitutionalSummary(symbol));
-      this.#updateStock(sector, symbol, {
-        ownershipPercent: s?.ownershipPercent ?? null,
-        ownershipPercentChange: s?.ownershipPercentChange ?? null,
-        sharesChange: s?.numberOf13FsharesChange ?? null,
-        investorsChange: s?.investorsHoldingChange ?? null,
-        inst13fDate: s?.date ?? null,
-        inst13fLoaded: true,
-        inst13fLoading: false,
-      });
-    } catch {
-      this.#updateStock(sector, symbol, { inst13fLoaded: true, inst13fLoading: false });
-    }
-  }
-
-  inst13fRowTooltip(stock: SectorStock): string {
-    const lines: string[] = [];
-    if (stock.inst13fDate) lines.push(`As of ${stock.inst13fDate} (13F)`);
-    if (stock.sharesChange !== null) lines.push(`Net shares Δ: ${this.formatVolume(stock.sharesChange)}`);
-    if (stock.investorsChange !== null) lines.push(`Institutions Δ: ${stock.investorsChange >= 0 ? '+' : ''}${stock.investorsChange}`);
-    return lines.join('\n');
-  }
-
-  #updateStock(sector: string, symbol: string, patch: Partial<SectorStock>): void {
-    this.sectorData.update(map => {
-      const data = map.get(sector);
-      if (!data) return map;
-      const updated = new Map(map);
-      updated.set(sector, {
-        ...data,
-        stocks: data.stocks.map(st => st.symbol === symbol ? { ...st, ...patch } : st),
-      });
-      return updated;
-    });
   }
 
   #sortSectorsByVolume(): void {
