@@ -37,6 +37,11 @@ export interface AlpacaBarsResponse {
   next_page_token: string | null;
 }
 
+export interface AlpacaMultiBarsResponse {
+  bars: Record<string, AlpacaBar[]>;
+  next_page_token: string | null;
+}
+
 export interface AlpacaSnapshot {
   latestTrade: { p: number; s: number; t: string } | null;
   latestQuote: { ap: number; bp: number } | null;

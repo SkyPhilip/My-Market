@@ -27,6 +27,23 @@ export interface FmpPeer {
   mktCap?: number;
 }
 
+export interface FmpInstitutionalSummary {
+  symbol: string;
+  date: string;
+  investorsHolding?: number;
+  investorsHoldingChange?: number;
+  numberOf13Fshares?: number;
+  numberOf13FsharesChange?: number;
+  totalInvested?: number;
+  totalInvestedChange?: number;
+  ownershipPercent?: number;
+  ownershipPercentChange?: number;
+  increasedPositions?: number;
+  reducedPositions?: number;
+  newPositions?: number;
+  closedPositions?: number;
+}
+
 export interface FmpIncomeStatement {
   date: string;
   symbol: string;

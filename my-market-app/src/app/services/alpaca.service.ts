@@ -6,6 +6,7 @@ import {
   AlpacaBarsResponse,
   AlpacaCalendarDay,
   AlpacaClock,
+  AlpacaMultiBarsResponse,
   AlpacaSnapshotsResponse,
   AlpacaWatchlist,
 } from '../models/alpaca.models';
@@ -52,6 +53,18 @@ export class AlpacaService {
       observe: 'response',
       params: { symbols: symbols.join(','), feed: 'iex' }
     });
+  }
+
+  getMultiBars(
+    symbols: string[],
+    timeframe = '1Day',
+    start?: string,
+    pageToken?: string,
+  ): Observable<HttpResponse<AlpacaMultiBarsResponse>> {
+    const params: Record<string, string> = { symbols: symbols.join(','), timeframe, feed: 'iex', limit: '10000' };
+    if (start) params['start'] = start;
+    if (pageToken) params['page_token'] = pageToken;
+    return this.http.get<AlpacaMultiBarsResponse>(`${this.#dataUrl}/stocks/bars`, { observe: 'response', params });
   }
 
   getWatchlists(): Observable<HttpResponse<AlpacaWatchlist[]>> {
