@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { AlpacaService } from '../../services/alpaca.service';
 import { ChartComponent } from '../chart/chart.component';
 import { WatchlistComponent } from '../watchlist/watchlist.component';
+import { WatchlistService } from '../../services/watchlist.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaBarsResponse, AlpacaErrorBody, AlpacaSnapshotsResponse } from '../../models/alpaca.models';
 import { LineData, Time } from 'lightweight-charts';
@@ -156,7 +157,17 @@ interface IndexCard {
           <div class="index-card">
             <div class="index-card__header">
               <span class="index-card__name">{{ card.name }}</span>
-              <span class="index-card__symbol">{{ card.symbol }}</span>
+              <span class="index-card__meta">
+                <span class="index-card__symbol">{{ card.symbol }}</span>
+                <button
+                  type="button"
+                  class="add-index-btn"
+                  [class.added]="inWatchList(card.symbol)"
+                  [disabled]="inWatchList(card.symbol)"
+                  (click)="addToWatchList(card.symbol)"
+                  [title]="inWatchList(card.symbol) ? 'In Watch List' : 'Add to Watch List'"
+                >{{ inWatchList(card.symbol) ? '✓' : '+' }}</button>
+              </span>
             </div>
             <div class="index-card__price">
               @if (card.currentPrice !== null) {
@@ -237,6 +248,35 @@ interface IndexCard {
       color: #8892b0;
       font-size: 13px;
     }
+    .index-card__meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .add-index-btn {
+      border: 1px solid #28a745;
+      border-radius: 5px;
+      background: transparent;
+      color: #28a745;
+      width: 20px;
+      height: 20px;
+      line-height: 1;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+    .add-index-btn:hover:not(:disabled) {
+      background: rgba(40, 167, 69, 0.12);
+    }
+    .add-index-btn.added {
+      color: #8892b0;
+      border-color: #2a3a5e;
+      cursor: default;
+    }
     .index-card__price {
       margin-bottom: 12px;
     }
@@ -314,6 +354,7 @@ interface IndexCard {
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   private alpacaService = inject(AlpacaService);
+  private watchlistService = inject(WatchlistService);
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
   private static readonly REFRESH_MS = 15 * 60 * 1000;
 
@@ -380,6 +421,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   toggleMovingAverage150(): void {
     this.showMovingAverage150.set(!this.showMovingAverage150());
+  }
+
+  addToWatchList(symbol: string): void {
+    this.watchlistService.addSymbol('Watch List', symbol);
+  }
+
+  inWatchList(symbol: string): boolean {
+    this.watchlistService.version('Watch List')(); // reactive dependency
+    return this.watchlistService.has('Watch List', symbol);
   }
 
   private async loadMarketSummary(): Promise<void> {

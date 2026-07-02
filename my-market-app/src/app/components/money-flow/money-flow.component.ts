@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { createChart, IChartApi, ISeriesApi, LineSeries, LineData, Time } from 'lightweight-charts';
 import { AlpacaService } from '../../services/alpaca.service';
 import { FmpService } from '../../services/fmp.service';
+import { WatchlistService } from '../../services/watchlist.service';
 import { AlpacaSnapshot, AlpacaBar } from '../../models/alpaca.models';
 import { SECTOR_SYMBOLS } from '../../data/sector-symbols';
 
@@ -106,6 +107,7 @@ const SECTOR_COLORS = [
                           <th>Company</th>
                           <th class="right">Change %</th>
                           <th class="right">Volume</th>
+                          <th class="right">Watch</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -118,6 +120,16 @@ const SECTOR_COLORS = [
                               @else { {{ (h.changePct >= 0 ? '+' : '') + (h.changePct | number:'1.2-2') }}% }
                             </td>
                             <td class="right">{{ formatVolume(h.volume) }}</td>
+                            <td class="right">
+                              <button
+                                type="button"
+                                class="add-watch-btn"
+                                [class.added]="inWatchList(h.symbol)"
+                                [disabled]="inWatchList(h.symbol)"
+                                (click)="addToWatchList(h.symbol)"
+                                [title]="inWatchList(h.symbol) ? 'In Watch List' : 'Add to Watch List'"
+                              >{{ inWatchList(h.symbol) ? '✓' : '+' }}</button>
+                            </td>
                           </tr>
                         }
                       </tbody>
@@ -152,6 +164,9 @@ const SECTOR_COLORS = [
     .as-of { color: #8892b0; font-size: 12px; margin: 0 0 12px; }
     .loading { color: #8892b0; font-size: 14px; }
     .load-btn { background: #4a9eff; color: #fff; border: none; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .add-watch-btn { border: 1px solid #28a745; border-radius: 5px; background: transparent; color: #28a745; width: 20px; height: 20px; line-height: 1; font-size: 14px; font-weight: 700; cursor: pointer; padding: 0; }
+    .add-watch-btn:hover:not(:disabled) { background: rgba(40, 167, 69, 0.12); }
+    .add-watch-btn.added { color: #8892b0; border-color: #2a3a5e; cursor: default; }
     .flow-table { width: 100%; border-collapse: collapse; background: #16213e; border-radius: 10px; border: 1px solid #2a3a5e; overflow: hidden; }
     .flow-table th { text-align: left; padding: 12px 16px; color: #8892b0; font-size: 13px; font-weight: 600; border-bottom: 1px solid #2a3a5e; background: #0f1a30; }
     .flow-table th.right { text-align: right; }
@@ -189,6 +204,7 @@ const SECTOR_COLORS = [
 export class MoneyFlowComponent implements OnInit, OnDestroy {
   private alpaca = inject(AlpacaService);
   private fmp = inject(FmpService);
+  private watchlistService = inject(WatchlistService);
   readonly loading = signal(false);
   readonly loaded = signal(false);
   readonly error = signal<string | null>(null);
@@ -333,6 +349,15 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
   holdingName(symbol: string): string {
     this.namesVersion(); // establish dependency so the view refreshes after a fetch
     return this.fmp.getCachedCompanyName(symbol) ?? symbol;
+  }
+
+  addToWatchList(symbol: string): void {
+    this.watchlistService.addSymbol('Watch List', symbol);
+  }
+
+  inWatchList(symbol: string): boolean {
+    this.watchlistService.version('Watch List')(); // reactive dependency
+    return this.watchlistService.has('Watch List', symbol);
   }
 
   private async ensureCompanyNames(sector: string): Promise<void> {

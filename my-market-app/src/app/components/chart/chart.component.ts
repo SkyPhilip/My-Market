@@ -136,6 +136,9 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() rangeLow: number | null = null;
   @Input() swingHigh: number | null = null;
   @Input() swingLow: number | null = null;
+  @Input() showOpeningRange = false;
+  @Input() openingRangeHigh: number | null = null;
+  @Input() openingRangeLow: number | null = null;
   @Input() peerData: LineData<Time>[] = [];
   @Input() showPeer = false;
 
@@ -148,6 +151,8 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   private rangeLowSeries: ISeriesApi<'Line'> | null = null;
   private swingHighSeries: ISeriesApi<'Line'> | null = null;
   private swingLowSeries: ISeriesApi<'Line'> | null = null;
+  private orHighSeries: ISeriesApi<'Line'> | null = null;
+  private orLowSeries: ISeriesApi<'Line'> | null = null;
   private peerSeries: ISeriesApi<'Line'> | null = null;
   @ViewChild('volumeProfile') volumeProfile!: ElementRef<HTMLDivElement>;
 
@@ -178,6 +183,9 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     }
     if ((changes['showRangeLines'] || changes['rangeHigh'] || changes['rangeLow'] || changes['swingHigh'] || changes['swingLow'] || changes['data']) && this.chart) {
       this.updateRangeLines();
+    }
+    if ((changes['showOpeningRange'] || changes['openingRangeHigh'] || changes['openingRangeLow'] || changes['data']) && this.chart) {
+      this.updateOpeningRangeLines();
     }
   }
 
@@ -298,7 +306,29 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       crosshairMarkerVisible: false,
     });
 
+    this.orHighSeries = this.chart.addSeries(LineSeries, {
+      title: 'OR High',
+      color: '#00bcd4',
+      lineWidth: 1,
+      lineStyle: 2,
+      lastValueVisible: true,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    });
+
+    this.orLowSeries = this.chart.addSeries(LineSeries, {
+      title: 'OR Low',
+      color: '#ff9800',
+      lineWidth: 1,
+      lineStyle: 2,
+      lastValueVisible: true,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    });
+
     this.updateRangeLines();
+
+    this.updateOpeningRangeLines();
 
     this.updateMovingAverageSeries();
     this.updateMovingAverage150Series();
@@ -400,6 +430,21 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     } else {
       this.swingLowSeries.setData([]);
     }
+  }
+
+  private updateOpeningRangeLines(): void {
+    if (!this.orHighSeries || !this.orLowSeries) return;
+
+    if (!this.showOpeningRange || this.openingRangeHigh === null || this.openingRangeLow === null || this.data.length < 2) {
+      this.orHighSeries.setData([]);
+      this.orLowSeries.setData([]);
+      return;
+    }
+
+    const highData: LineData<Time>[] = this.data.map(point => ({ time: point.time, value: this.openingRangeHigh! }));
+    const lowData: LineData<Time>[] = this.data.map(point => ({ time: point.time, value: this.openingRangeLow! }));
+    this.orHighSeries.setData(highData);
+    this.orLowSeries.setData(lowData);
   }
 
   private updateMovingAverageSeries(): void {

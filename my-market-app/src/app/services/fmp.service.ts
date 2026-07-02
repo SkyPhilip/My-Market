@@ -125,6 +125,10 @@ export class FmpService {
     return this.#companyNameCache.get(upper) ?? this.#companyNameFallbacks[upper];
   }
 
+  isEtfOrFund(symbol: string): boolean {
+    return this.#etfOrFundCache.get(symbol.toUpperCase()) ?? false;
+  }
+
   getAvailableSectors(): Observable<string[]> {
     return this.http.get<{ sector: string }[]>(`${this.#baseUrl}/available-sectors`, {
       params: { apikey: this.#apiKey }

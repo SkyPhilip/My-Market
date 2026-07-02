@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, signal, inject, input, WritableSignal } from '@angular/core';
+import { Component, OnInit, computed, signal, inject, input, effect, WritableSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -10,6 +10,7 @@ import { AlpacaErrorBody, AlpacaBarsResponse, AlpacaSnapshotsResponse, AlpacaSna
 import { FinnhubNewsArticle } from '../../models/finnhub.models';
 import { ChartComponent } from '../chart/chart.component';
 import { NotificationService } from '../../services/notification.service';
+import { WatchlistService } from '../../services/watchlist.service';
 import { LineData, Time } from 'lightweight-charts';
 
 type TimeRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'All';
@@ -86,8 +87,21 @@ function buildRangeLevels(bars: Array<{ t: string; h: number; l: number }>): Ran
   return { rangeHigh, rangeLow, swingHigh, swingLow };
 }
 
+function buildOpeningRange(bars: Array<{ t: string; h: number; l: number }>, minutes = 15): { high: number; low: number } | null {
+  if (!bars.length) return null;
+  const openMinutes = 9 * 60 + 30; // 9:30 ET
+  const windowBars = bars.filter(bar => {
+    const et = new Date(bar.t).toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit' });
+    const [h, m] = et.split(':').map(Number);
+    const mins = h * 60 + m;
+    return mins >= openMinutes && mins < openMinutes + minutes;
+  });
+  if (!windowBars.length) return null;
+  return { high: Math.max(...windowBars.map(b => b.h)), low: Math.min(...windowBars.map(b => b.l)) };
+}
+
 const RANGE_CONFIGS: Record<TimeRange, RangeConfig> = {
-  '1D':  { timeframe: '5Min',   getStart: () => new Date().toISOString().split('T')[0] },
+  '1D':  { timeframe: '1Min',   getStart: () => new Date().toISOString().split('T')[0] },
   '5D':  { timeframe: '15Min',  getStart: () => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; } },
   '1M':  { timeframe: '1Hour',  getStart: () => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().split('T')[0]; } },
   '6M':  { timeframe: '1Day',   getStart: () => { const d = new Date(); d.setMonth(d.getMonth() - 6); return d.toISOString().split('T')[0]; } },
@@ -126,6 +140,8 @@ interface WatchlistRow {
   rangeLow: number | null;
   swingHigh: number | null;
   swingLow: number | null;
+  openingRangeHigh: number | null;
+  openingRangeLow: number | null;
   peerSymbol: string | null;
   peerName: string | null;
   peerData: LineData<Time>[];
@@ -258,14 +274,6 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
               <tr class="clickable-row" [class.expanded]="expandedSymbols().has(row.symbol)" (click)="toggleChart(row.symbol)">
                 <td class="symbol">
                   <span class="symbol-text">{{ row.symbol }}</span>
-                  <button
-                    type="button"
-                    class="peer-btn"
-                    [class.active]="peerSymbols().has(row.symbol)"
-                    [class.loading]="row.peerLoading"
-                    (click)="togglePeer(row.symbol); $event.stopPropagation()"
-                    [title]="row.peerName ? ('Peer: ' + row.peerName) : (row.peerSymbol ? ('Peer: ' + row.peerSymbol) : 'Show closest peer overlay')"
-                  >{{ row.peerLoading ? '…' : (row.peerSymbol ?? 'Peer') }}</button>
                 </td>
                 <td class="name">{{ row.name }}</td>
                 <td class="sector">{{ row.sector }}</td>
@@ -321,6 +329,40 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                     @if (row.chartLoading) {
                       <p class="chart-loading">Loading chart...</p>
                     } @else {
+                      <div class="chart-controls">
+                        @if (selectedRange() === '1D') {
+                          <div class="split-btn">
+                            <button
+                              type="button"
+                              class="range-btn"
+                              [class.active]="openingRangeSymbols().has(row.symbol)"
+                              (click)="toggleOpeningRange(row.symbol)"
+                              title="Mark the first 15 minutes (9:30–9:45 ET) high/low"
+                            >Opening Range</button>
+                            @if (openingRangeSymbols().has(row.symbol)) {
+                              <button
+                                type="button"
+                                class="range-btn"
+                                [class.active]="openingRangeNarrowSymbols().has(row.symbol)"
+                                (click)="toggleOpeningRangeNarrow(row.symbol)"
+                                title="Narrow the opening range band by 25% around its midpoint"
+                              >−25%</button>
+                            }
+                          </div>
+                        }
+                        @if (isEtf(row.symbol)) {
+                          <span class="etf-badge" title="ETF/Fund — no comparable peer">ETF</span>
+                        } @else {
+                          <button
+                            type="button"
+                            class="peer-btn"
+                            [class.active]="peerSymbols().has(row.symbol)"
+                            [class.loading]="row.peerLoading"
+                            (click)="togglePeer(row.symbol)"
+                            [title]="row.peerName ? ('Peer: ' + row.peerName) : (row.peerSymbol ? ('Peer: ' + row.peerSymbol) : 'Show closest peer overlay')"
+                          >{{ row.peerLoading ? '…' : (row.peerSymbol ?? 'Peer') }}</button>
+                        }
+                      </div>
                       <app-chart
                         [data]="row.chartData"
                         [color]="'#4a9eff'"
@@ -335,6 +377,9 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                         [rangeLow]="row.rangeLow"
                         [swingHigh]="row.swingHigh"
                         [swingLow]="row.swingLow"
+                        [showOpeningRange]="openingRangeSymbols().has(row.symbol) && selectedRange() === '1D'"
+                        [openingRangeHigh]="openingRangeHighFor(row)"
+                        [openingRangeLow]="openingRangeLowFor(row)"
                         [peerData]="row.peerData"
                         [showPeer]="peerSymbols().has(row.symbol)"
                       ></app-chart>
@@ -670,6 +715,46 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       padding: 20px 0;
       text-align: center;
     }
+    .chart-controls {
+      display: flex;
+      justify-content: flex-start;
+      align-items: center;
+      padding: 8px 0 4px;
+    }
+    .chart-controls .peer-btn {
+      margin-left: auto;
+    }
+    .chart-controls .etf-badge {
+      margin-left: auto;
+      border: 1px solid #8892b0;
+      border-radius: 5px;
+      color: #8892b0;
+      padding: 1px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(136, 146, 176, 0.08);
+    }
+    .split-btn {
+      display: inline-flex;
+    }
+    .split-btn > .range-btn {
+      border-radius: 0;
+    }
+    .split-btn > .range-btn:first-child {
+      border-radius: 6px 0 0 6px;
+    }
+    .split-btn > .range-btn:last-child {
+      border-radius: 0 6px 6px 0;
+      margin-left: -1px;
+    }
+    .split-btn > .range-btn:only-child {
+      border-radius: 6px;
+      margin-left: 0;
+    }
+    .split-btn > .range-btn.active {
+      position: relative;
+      z-index: 1;
+    }
     .shares {
       color: #a0a0b0;
       font-size: 13px;
@@ -693,6 +778,7 @@ export class WatchlistComponent implements OnInit {
   private fmpService = inject(FmpService);
   private finnhubService = inject(FinnhubService);
   private notificationService = inject(NotificationService);
+  private watchlistService = inject(WatchlistService);
 
   title = input.required<string>();
   watchlistName = input.required<string>();
@@ -710,6 +796,7 @@ export class WatchlistComponent implements OnInit {
   });
 
   private loading = signal(true);
+  private initialized = signal(false);
   private symbols = signal<string[]>([]);
   watchlistRows: WritableSignal<WatchlistRow[]> = signal<WatchlistRow[]>([]);
   newSymbol = '';
@@ -749,6 +836,8 @@ export class WatchlistComponent implements OnInit {
   readonly showMovingAverage = signal(false);
   readonly showMovingAverage150 = signal(false);
   readonly showRangeLevels = signal(false);
+  openingRangeSymbols = signal<Set<string>>(new Set());
+  openingRangeNarrowSymbols = signal<Set<string>>(new Set());
   readonly newsPanelOpen = signal(false);
   readonly newsSymbol = signal<string>('');
   readonly newsArticles = signal<FinnhubNewsArticle[]>([]);
@@ -775,6 +864,22 @@ export class WatchlistComponent implements OnInit {
       return dir === 'asc' ? cmp : -cmp;
     });
   });
+
+  constructor() {
+    // Reconcile rows when another component (index cards, Money Flow) adds a ticker
+    // to this watchlist via WatchlistService.
+    effect(() => {
+      this.watchlistService.version(this.watchlistName())();
+      if (!this.initialized()) return;
+      const current = this.symbols();
+      for (const entry of this.watchlistService.getEntries(this.watchlistName())) {
+        const sym = (typeof entry === 'string' ? entry : entry.symbol).toUpperCase();
+        if (!current.includes(sym)) {
+          this.addTicker(sym);
+        }
+      }
+    });
+  }
 
   ngOnInit(): void {
     this.loadWatchlist();
@@ -912,13 +1017,63 @@ export class WatchlistComponent implements OnInit {
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
+        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
     } finally {
       this.loading.set(false);
+      this.initialized.set(true);
     }
+  }
+
+  #buildRow(symbol: string, snap: AlpacaSnapshot, costBasis: number | null, shares: number | null): WatchlistRow {
+    const price = snap.latestTrade?.p ?? snap.minuteBar?.c ?? null;
+    const prevClose = snap.prevDailyBar?.c ?? null;
+    const change = price && prevClose ? +(price - prevClose).toFixed(2) : null;
+    const changePercent = price && prevClose ? +((change! / prevClose) * 100).toFixed(2) : null;
+    const sector = this.fmpService.getCachedSector(symbol) ?? '—';
+    const name = this.fmpService.getCachedCompanyName(symbol) ?? symbol;
+    const volume = snap.dailyBar?.v ?? null;
+    const totalCost = costBasis !== null && shares !== null ? +(costBasis * shares).toFixed(2) : null;
+    const marketValue = price !== null && shares !== null ? +(price * shares).toFixed(2) : null;
+    const gainLoss = price !== null && costBasis !== null ? +(price - costBasis).toFixed(2) : null;
+    const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
+    const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
+    const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
+    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
+  }
+
+  /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
+  async addTicker(symbol: string): Promise<void> {
+    const upper = symbol.trim().toUpperCase();
+    if (!upper || this.symbols().includes(upper)) return;
+    try {
+      const [snapResult] = await Promise.all([
+        firstValueFrom(this.alpacaService.getSnapshots([upper])),
+        this.fmpService.getCachedSector(upper)
+          ? Promise.resolve()
+          : firstValueFrom(this.fmpService.getProfiles([upper])),
+      ]);
+      const snap = snapResult?.body?.[upper];
+      if (!snap) {
+        this.notificationService.showError(`"${upper}" is not a valid ticker symbol.`);
+        return;
+      }
+      this.symbols.update(s => [...s, upper]);
+      this.watchlistRows.update(rows => [...rows, this.#buildRow(upper, snap, null, null)]);
+      this.saveToStorage();
+    } catch {
+      // network/profile errors are non-fatal; the ticker simply isn't added
+    }
+  }
+
+  hasSymbol(symbol: string): boolean {
+    return this.symbols().includes(symbol.trim().toUpperCase());
+  }
+
+  isEtf(symbol: string): boolean {
+    return this.fmpService.isEtfOrFund(symbol);
   }
 
   async addSymbol(event: Event): Promise<void> {
@@ -1025,6 +1180,8 @@ export class WatchlistComponent implements OnInit {
         rangeLow: null,
         swingHigh: null,
         swingLow: null,
+        openingRangeHigh: null,
+        openingRangeLow: null,
         peerSymbol: null,
         peerName: null,
         peerData: [],
@@ -1207,6 +1364,43 @@ export class WatchlistComponent implements OnInit {
     this.showRangeLevels.set(!this.showRangeLevels());
   }
 
+  toggleOpeningRange(symbol: string): void {
+    if (this.selectedRange() !== '1D') return;
+    this.openingRangeSymbols.update(s => {
+      const next = new Set(s);
+      if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
+      return next;
+    });
+  }
+
+  toggleOpeningRangeNarrow(symbol: string): void {
+    if (this.selectedRange() !== '1D') return;
+    this.openingRangeNarrowSymbols.update(s => {
+      const next = new Set(s);
+      if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
+      return next;
+    });
+  }
+
+  private narrowedBound(row: WatchlistRow, bound: 'high' | 'low'): number | null {
+    const high = row.openingRangeHigh;
+    const low = row.openingRangeLow;
+    const raw = bound === 'high' ? high : low;
+    if (high === null || low === null) return raw;
+    if (!this.openingRangeNarrowSymbols().has(row.symbol)) return raw;
+    // Shrink the band width by 25% (keep 75% of the half-range) around its midpoint.
+    const mid = (high + low) / 2;
+    return +(mid + (raw! - mid) * 0.75).toFixed(4);
+  }
+
+  openingRangeHighFor(row: WatchlistRow): number | null {
+    return this.narrowedBound(row, 'high');
+  }
+
+  openingRangeLowFor(row: WatchlistRow): number | null {
+    return this.narrowedBound(row, 'low');
+  }
+
   toggleMovingAverage(): void {
     this.showMovingAverage.set(!this.showMovingAverage());
   }
@@ -1343,6 +1537,7 @@ export class WatchlistComponent implements OnInit {
       }));
       const volumeProfileData = buildVolumeProfile(rawBars);
       const rangeLevels = range === '5D' ? buildRangeLevels(rawBars) : null;
+      const openingRange = range === '1D' ? buildOpeningRange(rawBars) : null;
       this.watchlistRows.update(rows => rows.map(r =>
         r.symbol === symbol ? {
           ...r,
@@ -1356,6 +1551,8 @@ export class WatchlistComponent implements OnInit {
           rangeLow: rangeLevels?.rangeLow ?? null,
           swingHigh: rangeLevels?.swingHigh ?? null,
           swingLow: rangeLevels?.swingLow ?? null,
+          openingRangeHigh: openingRange?.high ?? null,
+          openingRangeLow: openingRange?.low ?? null,
         } : r
       ));
       if (this.peerSymbols().has(symbol)) {
