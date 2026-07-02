@@ -3,8 +3,15 @@ import { CommonModule } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import { createChart, IChartApi, ISeriesApi, LineSeries, LineData, Time } from 'lightweight-charts';
 import { AlpacaService } from '../../services/alpaca.service';
+import { FmpService } from '../../services/fmp.service';
 import { AlpacaSnapshot, AlpacaBar } from '../../models/alpaca.models';
 import { SECTOR_SYMBOLS } from '../../data/sector-symbols';
+
+interface SectorHolding {
+  symbol: string;
+  changePct: number | null;
+  volume: number;
+}
 
 interface SectorFlow {
   sector: string;
@@ -16,9 +23,12 @@ interface SectorFlow {
   netVolumeRatio: number; // netVolume / total volume  (−1..1)
   volumeThrust: number;   // today volume / prior-day volume
   flowScore: number;      // composite
+  totalVolume: number;    // sum of constituent daily volume
+  holdings: SectorHolding[]; // constituents, sorted best→worst by % change
 }
 
 interface FlowEntry {
+  symbol: string;
   change: number | null;
   vol: number;
   prevVol: number;
@@ -70,8 +80,12 @@ const SECTOR_COLORS = [
           </thead>
           <tbody>
             @for (row of flows(); track row.sector) {
-              <tr>
-                <td class="sector">{{ row.sector }} <span class="count">({{ row.count }})</span></td>
+              <tr class="sector-row" [class.expanded]="expandedSector() === row.sector"
+                  (click)="toggleRow(row.sector)">
+                <td class="sector">
+                  <span class="caret">{{ expandedSector() === row.sector ? '▾' : '▸' }}</span>
+                  {{ row.sector }} <span class="count">{{ formatVolume(row.totalVolume) }}</span>
+                </td>
                 <td class="right score" [style.background]="scoreColor(row.flowScore)">{{ row.flowScore | number:'1.2-2' }}</td>
                 <td class="right" [class.positive]="row.relStrength >= 0" [class.negative]="row.relStrength < 0">
                   {{ (row.relStrength >= 0 ? '+' : '') + (row.relStrength | number:'1.2-2') }}%
@@ -82,6 +96,35 @@ const SECTOR_COLORS = [
                 </td>
                 <td class="right">{{ row.volumeThrust | number:'1.2-2' }}×</td>
               </tr>
+              @if (expandedSector() === row.sector) {
+                <tr class="detail-row">
+                  <td colspan="6">
+                    <table class="holdings">
+                      <thead>
+                        <tr>
+                          <th>Symbol</th>
+                          <th>Company</th>
+                          <th class="right">Change %</th>
+                          <th class="right">Volume</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (h of row.holdings; track h.symbol) {
+                          <tr>
+                            <td class="h-symbol">{{ h.symbol }}</td>
+                            <td class="h-name">{{ holdingName(h.symbol) }}</td>
+                            <td class="right" [class.positive]="(h.changePct ?? 0) >= 0" [class.negative]="(h.changePct ?? 0) < 0">
+                              @if (h.changePct === null) { — }
+                              @else { {{ (h.changePct >= 0 ? '+' : '') + (h.changePct | number:'1.2-2') }}% }
+                            </td>
+                            <td class="right">{{ formatVolume(h.volume) }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              }
             }
           </tbody>
         </table>
@@ -111,14 +154,28 @@ const SECTOR_COLORS = [
     .load-btn { background: #4a9eff; color: #fff; border: none; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
     .flow-table { width: 100%; border-collapse: collapse; background: #16213e; border-radius: 10px; border: 1px solid #2a3a5e; overflow: hidden; }
     .flow-table th { text-align: left; padding: 12px 16px; color: #8892b0; font-size: 13px; font-weight: 600; border-bottom: 1px solid #2a3a5e; background: #0f1a30; }
+    .flow-table th.right { text-align: right; }
     .flow-table td { padding: 12px 16px; color: #e0e0e0; font-size: 14px; border-bottom: 1px solid #2a3a5e; }
     .flow-table tr:last-child td { border-bottom: none; }
+    .sector-row { cursor: pointer; transition: background 0.12s; }
+    .sector-row:hover { background: #1b2947; }
+    .sector-row.expanded { background: #1b2947; }
+    .caret { display: inline-block; width: 14px; color: #8892b0; font-size: 11px; }
     .right { text-align: right; }
     .sector { font-weight: 600; }
     .count { color: #8892b0; font-weight: 400; font-size: 12px; }
     .score { font-weight: 700; border-radius: 4px; }
     .positive { color: #28a745; }
     .negative { color: #dc3545; }
+    .detail-row td { padding: 0; background: #0f1a30; border-bottom: 1px solid #2a3a5e; }
+    .holdings { width: 100%; border-collapse: collapse; }
+    .holdings th { text-align: left; padding: 8px 16px 8px 40px; color: #8892b0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+    .holdings th.right { text-align: right; padding: 8px 16px; }
+    .holdings td { padding: 7px 16px 7px 40px; color: #c8d0e0; font-size: 13px; border-top: 1px solid #1c2a48; }
+    .holdings td.right { padding: 7px 16px; }
+    .holdings tr:first-child td { border-top: none; }
+    .h-symbol { font-weight: 600; color: #e0e0e0; }
+    .h-name { color: #8892b0; }
     .chart-card { margin-top: 20px; background: #16213e; border: 1px solid #2a3a5e; border-radius: 10px; padding: 16px; }
     .chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
     .chart-head h3 { color: #e0e0e0; font-size: 15px; margin: 0; }
@@ -131,6 +188,7 @@ const SECTOR_COLORS = [
 })
 export class MoneyFlowComponent implements OnInit, OnDestroy {
   private alpaca = inject(AlpacaService);
+  private fmp = inject(FmpService);
   readonly loading = signal(false);
   readonly loaded = signal(false);
   readonly error = signal<string | null>(null);
@@ -138,6 +196,9 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
   readonly asOf = signal('');
   readonly flowHistory = signal<FlowSeries[]>([]);
   readonly hiddenSectors = signal<Set<string>>(new Set());
+  readonly expandedSector = signal<string | null>(null);
+  // Bumped after lazily fetching company names so the view re-reads the cache.
+  private readonly namesVersion = signal(0);
 
   private chartEl?: ElementRef<HTMLDivElement>;
   @ViewChild('flowChart') set flowChartRef(el: ElementRef<HTMLDivElement> | undefined) {
@@ -170,9 +231,12 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
         const entries = symbols.map(sym => {
           const snap = snaps[sym];
           if (!snap) return null;
-          return { change: this.changePct(snap), vol: snap.dailyBar?.v ?? 0, prevVol: snap.prevDailyBar?.v ?? 0 };
+          return { symbol: sym, change: this.changePct(snap), vol: snap.dailyBar?.v ?? 0, prevVol: snap.prevDailyBar?.v ?? 0 };
         }).filter((e): e is FlowEntry => e !== null);
-        return this.aggregateFlow(sector, entries, spyChange);
+        const holdings: SectorHolding[] = entries
+          .map(e => ({ symbol: e.symbol, changePct: e.change, volume: e.vol }))
+          .sort((a, b) => (b.changePct ?? -Infinity) - (a.changePct ?? -Infinity));
+        return { ...this.aggregateFlow(sector, entries, spyChange), holdings };
       });
 
       flows.sort((a, b) => b.flowScore - a.flowScore);
@@ -201,7 +265,7 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
     }
   }
 
-  private aggregateFlow(sector: string, entries: FlowEntry[], spyChange: number | null): SectorFlow {
+  private aggregateFlow(sector: string, entries: FlowEntry[], spyChange: number | null): Omit<SectorFlow, 'holdings'> {
     let changeSum = 0, changeCount = 0, upCount = 0, total = 0;
     let upVol = 0, downVol = 0, dayVol = 0, prevVol = 0;
     for (const e of entries) {
@@ -220,7 +284,7 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
     const volumeThrust = prevVol ? +(dayVol / prevVol).toFixed(2) : 0;
     // Composite (documented weights): rel. strength + breadth tilt + net-volume direction
     const flowScore = +(relStrength + ((breadthPct - 50) / 50) * 2 + netVolumeRatio * 3).toFixed(2);
-    return { sector, count: total, avgChangePct: +avgChangePct.toFixed(2), relStrength, breadthPct, netVolume, netVolumeRatio, volumeThrust, flowScore };
+    return { sector, count: total, avgChangePct: +avgChangePct.toFixed(2), relStrength, breadthPct, netVolume, netVolumeRatio, volumeThrust, flowScore, totalVolume: dayVol };
   }
 
   private changePct(snap: AlpacaSnapshot | undefined): number | null {
@@ -257,6 +321,30 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
 
   historyDays(): number {
     return this.flowHistory().reduce((m, s) => Math.max(m, s.data.length), 0);
+  }
+
+  toggleRow(sector: string): void {
+    // Accordion: only one sector open at a time.
+    const next = this.expandedSector() === sector ? null : sector;
+    this.expandedSector.set(next);
+    if (next) this.ensureCompanyNames(next);
+  }
+
+  holdingName(symbol: string): string {
+    this.namesVersion(); // establish dependency so the view refreshes after a fetch
+    return this.fmp.getCachedCompanyName(symbol) ?? symbol;
+  }
+
+  private async ensureCompanyNames(sector: string): Promise<void> {
+    const symbols = this.flows().find(f => f.sector === sector)?.holdings.map(h => h.symbol) ?? [];
+    const uncached = symbols.filter(s => !this.fmp.getCachedCompanyName(s));
+    if (!uncached.length) return;
+    try {
+      await firstValueFrom(this.fmp.getProfiles(uncached));
+      this.namesVersion.update(v => v + 1);
+    } catch {
+      // Names are non-critical; leave symbols as the fallback display.
+    }
   }
 
   toggleSector(sector: string): void {
@@ -311,7 +399,7 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
           const m = byDate.get(sym);
           const cur = m?.get(date), pv = m?.get(prev);
           if (!cur || !pv || !pv.c) continue;
-          entries.push({ change: ((cur.c - pv.c) / pv.c) * 100, vol: cur.v, prevVol: pv.v });
+          entries.push({ symbol: sym, change: ((cur.c - pv.c) / pv.c) * 100, vol: cur.v, prevVol: pv.v });
         }
         if (!entries.length) continue;
         seriesData.get(sector)!.push({ time: date as Time, value: this.aggregateFlow(sector, entries, spyChange).flowScore });

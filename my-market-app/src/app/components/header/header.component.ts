@@ -20,7 +20,6 @@ import { firstValueFrom } from 'rxjs';
       </div>
       <nav class="header__nav">
         <a class="header__link" (click)="navigateTo('/dashboard')">Dashboard</a>
-        <a class="header__link" (click)="navigateTo('/sectors')">Sectors</a>
         <a class="header__link" (click)="navigateTo('/money-flow')">Money Flow</a>
         <a class="header__link" (click)="navigateTo('/settings')">Settings</a>
         <button class="header__logout" (click)="onLogout()">Logout</button>
