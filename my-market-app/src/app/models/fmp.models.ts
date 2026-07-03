@@ -63,3 +63,12 @@ export interface FmpScreenerResult {
   isFund: boolean;
   isActivelyTrading: boolean;
 }
+
+export interface HighYieldStock {
+  symbol: string;
+  companyName: string;
+  sector: string;
+  price: number;
+  annualDividend: number;
+  yieldPct: number;
+}

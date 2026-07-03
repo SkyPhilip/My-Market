@@ -101,7 +101,7 @@ function buildOpeningRange(bars: Array<{ t: string; h: number; l: number }>, min
 }
 
 const RANGE_CONFIGS: Record<TimeRange, RangeConfig> = {
-  '1D':  { timeframe: '1Min',   getStart: () => new Date().toISOString().split('T')[0] },
+  '1D':  { timeframe: '1Min',   getStart: () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) },
   '5D':  { timeframe: '15Min',  getStart: () => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; } },
   '1M':  { timeframe: '1Hour',  getStart: () => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().split('T')[0]; } },
   '6M':  { timeframe: '1Day',   getStart: () => { const d = new Date(); d.setMonth(d.getMonth() - 6); return d.toISOString().split('T')[0]; } },
@@ -121,6 +121,7 @@ interface WatchlistRow {
   pegy: number | null;
   pegyLoading: boolean;
   pegyLoaded: boolean;
+  dividendYield: number | null;
   costBasis: number | null;
   shares: number | null;
   totalCost: number | null;
@@ -148,7 +149,7 @@ interface WatchlistRow {
   peerLoading: boolean;
 }
 
-type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'totalGainLossPercent';
+type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'dividendYield' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'totalGainLossPercent';
 type SortDirection = 'asc' | 'desc';
 
 type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number };
@@ -255,6 +256,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
               <th class="sortable" (click)="sortBy('changePercent')">Change % <span class="sort-icon">{{ sortIcon('changePercent') }}</span></th>
               <th class="sortable" (click)="sortBy('volume')">Volume <span class="sort-icon">{{ sortIcon('volume') }}</span></th>
               <th class="sortable" (click)="sortBy('pegy')">PEGY <span class="sort-icon">{{ sortIcon('pegy') }}</span></th>
+              <th class="sortable" (click)="sortBy('dividendYield')">Div Yield <span class="sort-icon">{{ sortIcon('dividendYield') }}</span></th>
               @if (hasCostBasis()) {
                 <th class="sortable" (click)="sortBy('shares')">Shares <span class="sort-icon">{{ sortIcon('shares') }}</span></th>
                 <th class="sortable" (click)="sortBy('costBasis')">Cost <span class="sort-icon">{{ sortIcon('costBasis') }}</span></th>
@@ -294,6 +296,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                     <button type="button" class="pegy-btn" [title]="pegyTooltip" (click)="loadPegy(row.symbol); $event.stopPropagation()">PEGY</button>
                   }
                 </td>
+                <td class="price">{{ row.dividendYield !== null ? ((row.dividendYield | number:'1.2-2') + '%') : '—' }}</td>
                 @if (hasCostBasis()) {
                   <td class="shares">{{ row.shares !== null ? (row.shares | number:'1.0-4') : '—' }}</td>
                   <td class="price">{{ row.costBasis !== null ? ('$' + (row.costBasis | number:'1.2-2')) : '—' }}</td>
@@ -325,7 +328,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
               </tr>
               @if (expandedSymbols().has(row.symbol)) {
                 <tr class="chart-row">
-                  <td [attr.colspan]="hasCostBasis() ? 18 : 10">
+                  <td [attr.colspan]="hasCostBasis() ? 19 : 11">
                     @if (row.chartLoading) {
                       <p class="chart-loading">Loading chart...</p>
                     } @else {
@@ -985,9 +988,7 @@ export class WatchlistComponent implements OnInit {
         return;
       }
 
-      const uncachedSymbols = initialSymbols.filter(s => (
-        !this.fmpService.getCachedSector(s) || !this.fmpService.getCachedCompanyName(s)
-      ));
+      const uncachedSymbols = initialSymbols.filter(s => !this.fmpService.hasProfile(s));
       if (uncachedSymbols.length) {
         try {
           await firstValueFrom(this.fmpService.getProfiles(uncachedSymbols));
@@ -1017,7 +1018,7 @@ export class WatchlistComponent implements OnInit {
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
+        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -1025,6 +1026,11 @@ export class WatchlistComponent implements OnInit {
       this.loading.set(false);
       this.initialized.set(true);
     }
+  }
+
+  #dividendYield(symbol: string, price: number | null): number | null {
+    const annual = this.fmpService.getCachedLastDividend(symbol);
+    return annual && price ? +((annual / price) * 100).toFixed(2) : null;
   }
 
   #buildRow(symbol: string, snap: AlpacaSnapshot, costBasis: number | null, shares: number | null): WatchlistRow {
@@ -1041,7 +1047,7 @@ export class WatchlistComponent implements OnInit {
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
     const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
-    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
+    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -1161,6 +1167,7 @@ export class WatchlistComponent implements OnInit {
         pegy: null,
         pegyLoading: false,
         pegyLoaded: false,
+        dividendYield: this.#dividendYield(symbol, price),
         volume,
         costBasis: normalizedCostBasis,
         shares: normalizedShares,

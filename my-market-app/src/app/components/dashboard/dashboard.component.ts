@@ -83,7 +83,7 @@ function buildRangeLevels(bars: Array<{ t: string; h: number; l: number }>): Ran
 }
 
 const RANGE_CONFIGS: Record<TimeRange, RangeConfig> = {
-  '1D':  { timeframe: '5Min',   getStart: () => new Date().toISOString().split('T')[0] },
+  '1D':  { timeframe: '5Min',   getStart: () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) },
   '5D':  { timeframe: '15Min',  getStart: () => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; } },
   '1M':  { timeframe: '1Hour',  getStart: () => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().split('T')[0]; } },
   '6M':  { timeframe: '1Day',   getStart: () => { const d = new Date(); d.setMonth(d.getMonth() - 6); return d.toISOString().split('T')[0]; } },

@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, from, of, forkJoin } from 'rxjs';
 import { map, tap, mergeMap, toArray, catchError, switchMap } from 'rxjs/operators';
-import { FmpAnalystEstimate, FmpPeer, FmpProfile, FmpRatiosTtm, FmpScreenerResult, FmpSectorPerformance } from '../models/fmp.models';
+import { FmpAnalystEstimate, FmpPeer, FmpProfile, FmpRatiosTtm, FmpScreenerResult, FmpSectorPerformance, HighYieldStock } from '../models/fmp.models';
 import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -28,6 +28,8 @@ export class FmpService {
   #sectorCache = new Map<string, string>();
   #companyNameCache = new Map<string, string>();
   #etfOrFundCache = new Map<string, boolean>();
+  #dividendCache = new Map<string, number>();
+  #profileFetched = new Set<string>();
   #pegyCache = new Map<string, number | null>();
   #peersCache = new Map<string, string | null>();
 
@@ -53,6 +55,10 @@ export class FmpService {
           this.#sectorCache.set(p.symbol, p.sector || '—');
           this.#companyNameCache.set(p.symbol, p.companyName || p.symbol);
           this.#etfOrFundCache.set(p.symbol, Boolean(p.isEtf || p.isFund));
+          this.#profileFetched.add(p.symbol);
+          if (typeof p.lastDividend === 'number' && p.lastDividend > 0) {
+            this.#dividendCache.set(p.symbol, p.lastDividend);
+          }
         }
         this.#saveCacheToStorage();
       })
@@ -129,6 +135,16 @@ export class FmpService {
     return this.#etfOrFundCache.get(symbol.toUpperCase()) ?? false;
   }
 
+  /** Annual dividend $/share from the cached FMP profile (lastDividend); undefined if none. */
+  getCachedLastDividend(symbol: string): number | undefined {
+    return this.#dividendCache.get(symbol.toUpperCase());
+  }
+
+  /** True once a full profile has been fetched for the symbol (so absence of a dividend is meaningful). */
+  hasProfile(symbol: string): boolean {
+    return this.#profileFetched.has(symbol.toUpperCase());
+  }
+
   getAvailableSectors(): Observable<string[]> {
     return this.http.get<{ sector: string }[]>(`${this.#baseUrl}/available-sectors`, {
       params: { apikey: this.#apiKey }
@@ -141,6 +157,34 @@ export class FmpService {
     return this.http.get<FmpScreenerResult[]>(`${this.#baseUrl}/company-screener`, {
       params: { sector, limit: limit.toString(), apikey: this.#apiKey }
     });
+  }
+
+  /** Ranks dividend-paying stocks (ETFs/funds excluded) by yield across the given sectors. */
+  getHighYieldStocks(sectors: string[], perSector = 30): Observable<HighYieldStock[]> {
+    return forkJoin(
+      sectors.map(sector =>
+        this.getTopBySector(sector, perSector).pipe(catchError(() => of<FmpScreenerResult[]>([])))
+      )
+    ).pipe(
+      map(lists => {
+        const rows: HighYieldStock[] = [];
+        for (const list of lists) {
+          for (const r of list) {
+            if (r.isEtf || r.isFund) continue;
+            if (!(r.price > 0) || !(r.lastAnnualDividend > 0)) continue;
+            rows.push({
+              symbol: r.symbol,
+              companyName: r.companyName || r.symbol,
+              sector: r.sector || '—',
+              price: r.price,
+              annualDividend: r.lastAnnualDividend,
+              yieldPct: +((r.lastAnnualDividend / r.price) * 100).toFixed(2),
+            });
+          }
+        }
+        return rows.sort((a, b) => b.yieldPct - a.yieldPct);
+      })
+    );
   }
 
   getPegy(symbols: string[]): Observable<Map<string, number | null>> {
@@ -257,6 +301,18 @@ export class FmpService {
         this.#etfOrFundCache = new Map(entries);
       }
 
+      const divStored = sessionStorage.getItem('fmp_div_cache');
+      if (divStored) {
+        const entries: [string, number][] = JSON.parse(divStored);
+        this.#dividendCache = new Map(entries);
+      }
+
+      const fetchedStored = sessionStorage.getItem('fmp_profile_fetched');
+      if (fetchedStored) {
+        const entries: string[] = JSON.parse(fetchedStored);
+        this.#profileFetched = new Set(entries);
+      }
+
       const peersStored = sessionStorage.getItem('fmp_peers_cache');
       if (peersStored) {
         const entries: [string, string | null][] = JSON.parse(peersStored);
@@ -271,6 +327,8 @@ export class FmpService {
     sessionStorage.setItem('fmp_sector_cache', JSON.stringify([...this.#sectorCache.entries()]));
     sessionStorage.setItem('fmp_name_cache', JSON.stringify([...this.#companyNameCache.entries()]));
     sessionStorage.setItem('fmp_etf_cache', JSON.stringify([...this.#etfOrFundCache.entries()]));
+    sessionStorage.setItem('fmp_div_cache', JSON.stringify([...this.#dividendCache.entries()]));
+    sessionStorage.setItem('fmp_profile_fetched', JSON.stringify([...this.#profileFetched]));
     sessionStorage.setItem('fmp_peers_cache', JSON.stringify([...this.#peersCache.entries()]));
   }
 
@@ -278,11 +336,15 @@ export class FmpService {
     this.#sectorCache.clear();
     this.#companyNameCache.clear();
     this.#etfOrFundCache.clear();
+    this.#dividendCache.clear();
+    this.#profileFetched.clear();
     this.#pegyCache.clear();
     this.#peersCache.clear();
     sessionStorage.removeItem('fmp_sector_cache');
     sessionStorage.removeItem('fmp_name_cache');
     sessionStorage.removeItem('fmp_etf_cache');
+    sessionStorage.removeItem('fmp_div_cache');
+    sessionStorage.removeItem('fmp_profile_fetched');
     sessionStorage.removeItem('fmp_peers_cache');
   }
 }

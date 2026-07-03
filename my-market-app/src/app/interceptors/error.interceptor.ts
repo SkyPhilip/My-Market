@@ -89,6 +89,12 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
       const isGracefullyHandledFmpRead = isFmpRequest && req.method === 'GET';
       const isGracefullyHandledFinnhubRead = isFinnhubRequest && req.method === 'GET';
 
+      // Rate limit: always surface a persistent banner naming the API, even for
+      // reads that are otherwise handled silently (FMP/Finnhub GETs).
+      if (error.status === 429) {
+        notificationService.showRateLimit(getApiSource(req.url));
+      }
+
       if (isGracefullyHandledFmpRead || isGracefullyHandledFinnhubRead) {
         // Expected on free-tier / premium-gated endpoints (e.g. 402 ratios-ttm) — callers fall back gracefully.
         console.debug('ErrorInterceptor (handled read):', req.url, 'status:', error.status);
@@ -99,7 +105,7 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
       if (error.status === 401 && isAlpacaRequest && !isLoginRequest) {
         console.log('ErrorInterceptor: credentials invalid, redirecting to login');
         authService.logout();
-      } else if (!isLoginRequest && !isGracefullyHandledFmpRead && !isGracefullyHandledFinnhubRead) {
+      } else if (!isLoginRequest && !isGracefullyHandledFmpRead && !isGracefullyHandledFinnhubRead && error.status !== 429) {
         const message = buildErrorMessage(req.url, error);
         console.log('ErrorInterceptor: showing notification:', message);
         notificationService.showError(message);

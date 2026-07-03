@@ -4,6 +4,7 @@ export interface Notification {
   id: number;
   type: 'error' | 'success' | 'info';
   message: string;
+  persistent?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -26,22 +27,31 @@ export class NotificationService {
     this.addNotification('info', message);
   }
 
+  /** Persistent (non-auto-dismissing) banner for API rate-limit (HTTP 429). */
+  showRateLimit(apiSource: string): void {
+    this.addNotification(
+      'error',
+      `${apiSource}: daily rate limit reached (HTTP 429). Requests to this API are blocked until the quota resets.`,
+      true,
+    );
+  }
+
   dismiss(id: number): void {
     this.clearDismissTimer(id);
     this.notifications.update(current => current.filter(n => n.id !== id));
   }
 
-  private addNotification(type: Notification['type'], message: string): void {
+  private addNotification(type: Notification['type'], message: string, persistent = false): void {
     const existing = this.notifications().find(n => n.type === type && n.message === message);
     if (existing) {
-      this.scheduleDismiss(existing.id);
+      if (!persistent) this.scheduleDismiss(existing.id);
       return;
     }
 
     const id = ++this.idCounter;
-    const notification: Notification = { id, type, message };
+    const notification: Notification = { id, type, message, persistent };
     this.notifications.update(current => [...current, notification]);
-    this.scheduleDismiss(id);
+    if (!persistent) this.scheduleDismiss(id);
   }
 
   private scheduleDismiss(id: number): void {
