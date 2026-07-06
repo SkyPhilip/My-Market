@@ -42,6 +42,21 @@ export interface AlpacaMultiBarsResponse {
   next_page_token: string | null;
 }
 
+/** One entry from the Alpaca movers screener (/v1beta1/screener/stocks/movers). */
+export interface AlpacaMover {
+  symbol: string;
+  percent_change: number;
+  change: number;
+  price: number;
+}
+
+export interface AlpacaMoversResponse {
+  gainers: AlpacaMover[];
+  losers: AlpacaMover[];
+  market_type: string;
+  last_updated: string;
+}
+
 export interface AlpacaSnapshot {
   latestTrade: { p: number; s: number; t: string } | null;
   latestQuote: { ap: number; bp: number } | null;

@@ -7,6 +7,7 @@ import {
   AlpacaCalendarDay,
   AlpacaClock,
   AlpacaMultiBarsResponse,
+  AlpacaMoversResponse,
   AlpacaSnapshotsResponse,
   AlpacaWatchlist,
 } from '../models/alpaca.models';
@@ -15,6 +16,7 @@ import {
 export class AlpacaService {
   readonly #baseUrl = 'https://paper-api.alpaca.markets/v2';
   readonly #dataUrl = 'https://data.alpaca.markets/v2';
+  readonly #dataUrlV1Beta = 'https://data.alpaca.markets/v1beta1';
 
   constructor(private http: HttpClient) {}
 
@@ -52,6 +54,14 @@ export class AlpacaService {
     return this.http.get<AlpacaSnapshotsResponse>(`${this.#dataUrl}/stocks/snapshots`, {
       observe: 'response',
       params: { symbols: symbols.join(','), feed: 'iex' }
+    });
+  }
+
+  /** Top market movers (gainers/losers) by % change for the current session. */
+  getMovers(top = 10): Observable<HttpResponse<AlpacaMoversResponse>> {
+    return this.http.get<AlpacaMoversResponse>(`${this.#dataUrlV1Beta}/screener/stocks/movers`, {
+      observe: 'response',
+      params: { top: String(top) }
     });
   }
 

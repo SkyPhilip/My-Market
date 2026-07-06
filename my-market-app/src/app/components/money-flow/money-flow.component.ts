@@ -5,7 +5,7 @@ import { createChart, IChartApi, ISeriesApi, LineSeries, LineData, Time } from '
 import { AlpacaService } from '../../services/alpaca.service';
 import { FmpService } from '../../services/fmp.service';
 import { WatchlistService } from '../../services/watchlist.service';
-import { AlpacaSnapshot, AlpacaBar } from '../../models/alpaca.models';
+import { AlpacaSnapshot, AlpacaBar, AlpacaMover } from '../../models/alpaca.models';
 import { SECTOR_SYMBOLS } from '../../data/sector-symbols';
 
 interface SectorHolding {
@@ -60,6 +60,47 @@ const SECTOR_COLORS = [
         Inferred sector rotation from advancing/declining volume, breadth, and relative strength.
         Not literal institutional order flow.
       </p>
+
+      @if (moversGainers().length || moversLosers().length) {
+        <div class="movers-card">
+          <div class="movers-col">
+            <h3 class="movers-title movers-title--up">Top Gainers</h3>
+            @for (m of moversGainers(); track m.symbol) {
+              <div class="mover">
+                <span class="mover__sym">{{ m.symbol }}</span>
+                <span class="mover__price">{{ '$' + (m.price | number:'1.2-2') }}</span>
+                <span class="mover__pct positive">+{{ m.percent_change | number:'1.2-2' }}%</span>
+                <button
+                  type="button"
+                  class="add-watch-btn"
+                  [class.added]="inWatchList(m.symbol)"
+                  [disabled]="inWatchList(m.symbol)"
+                  (click)="addToWatchList(m.symbol)"
+                  [title]="inWatchList(m.symbol) ? 'In Watch List' : 'Add to Watch List'"
+                >{{ inWatchList(m.symbol) ? '✓' : '+' }}</button>
+              </div>
+            }
+          </div>
+          <div class="movers-col">
+            <h3 class="movers-title movers-title--down">Top Losers</h3>
+            @for (m of moversLosers(); track m.symbol) {
+              <div class="mover">
+                <span class="mover__sym">{{ m.symbol }}</span>
+                <span class="mover__price">{{ '$' + (m.price | number:'1.2-2') }}</span>
+                <span class="mover__pct negative">{{ m.percent_change | number:'1.2-2' }}%</span>
+                <button
+                  type="button"
+                  class="add-watch-btn"
+                  [class.added]="inWatchList(m.symbol)"
+                  [disabled]="inWatchList(m.symbol)"
+                  (click)="addToWatchList(m.symbol)"
+                  [title]="inWatchList(m.symbol) ? 'In Watch List' : 'Add to Watch List'"
+                >{{ inWatchList(m.symbol) ? '✓' : '+' }}</button>
+              </div>
+            }
+          </div>
+        </div>
+      }
 
       @if (loading()) { <p class="loading">Analyzing sectors…</p> }
       @if (error()) {
@@ -161,6 +202,16 @@ const SECTOR_COLORS = [
     .flow-page { padding: 24px; }
     h2 { color: #e0e0e0; margin: 0 0 6px; font-size: 22px; }
     .subtitle { color: #8892b0; font-size: 13px; margin: 0 0 16px; max-width: 640px; }
+    .movers-card { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; background: #16213e; border: 1px solid #2a3a5e; border-radius: 10px; padding: 14px 16px; }
+    .movers-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 8px; }
+    .movers-title--up { color: #28a745; }
+    .movers-title--down { color: #dc3545; }
+    .mover { display: grid; grid-template-columns: 1fr auto auto 24px; align-items: center; gap: 10px; padding: 4px 0; border-top: 1px solid #1c2a48; }
+    .movers-col .mover:first-of-type { border-top: none; }
+    .mover__sym { font-weight: 600; color: #4a9eff; font-size: 13px; }
+    .mover__price { color: #a0a0b0; font-size: 12px; }
+    .mover__pct { font-size: 13px; font-weight: 600; text-align: right; }
+    @media (max-width: 720px) { .movers-card { grid-template-columns: 1fr; } }
     .as-of { color: #8892b0; font-size: 12px; margin: 0 0 12px; }
     .loading { color: #8892b0; font-size: 14px; }
     .load-btn { background: #4a9eff; color: #fff; border: none; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
@@ -213,6 +264,8 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
   readonly flowHistory = signal<FlowSeries[]>([]);
   readonly hiddenSectors = signal<Set<string>>(new Set());
   readonly expandedSector = signal<string | null>(null);
+  readonly moversGainers = signal<AlpacaMover[]>([]);
+  readonly moversLosers = signal<AlpacaMover[]>([]);
   // Bumped after lazily fetching company names so the view re-reads the cache.
   private readonly namesVersion = signal(0);
 
@@ -238,6 +291,7 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
   async load(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
+    this.loadMovers();
     try {
       const allSymbols = Array.from(new Set([BENCHMARK, ...Object.values(SECTOR_SYMBOLS).flat()]));
       const snaps = await this.fetchAllSnapshots(allSymbols);
@@ -278,6 +332,17 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
       this.error.set(e instanceof Error ? e.message : 'Failed to load market data.');
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  /** Top market gainers/losers for the current session (Alpaca screener). Non-fatal. */
+  async loadMovers(): Promise<void> {
+    try {
+      const res = await firstValueFrom(this.alpaca.getMovers(10));
+      this.moversGainers.set(res.body?.gainers ?? []);
+      this.moversLosers.set(res.body?.losers ?? []);
+    } catch {
+      // movers are supplementary; ignore failures
     }
   }
 

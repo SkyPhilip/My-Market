@@ -34,3 +34,18 @@ export interface FinnhubRecommendation {
   sell: number;
   strongSell: number;
 }
+
+/** Next scheduled earnings report (Finnhub /calendar/earnings). */
+export interface FinnhubEarningsDate {
+  date: string;   // YYYY-MM-DD
+  hour: string;   // 'bmo' (before open) | 'amc' (after close) | 'dmh' | ''
+  epsEstimate: number | null;
+}
+
+/** A past quarter's EPS actual vs. estimate (Finnhub /stock/earnings). */
+export interface FinnhubEarningsSurprise {
+  period: string;  // YYYY-MM-DD (quarter end)
+  actual: number | null;
+  estimate: number | null;
+  surprisePercent: number | null;  // already a percent, e.g. 1.09 = +1.09%
+}

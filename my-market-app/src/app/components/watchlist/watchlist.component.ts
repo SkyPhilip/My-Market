@@ -7,7 +7,7 @@ import { FmpService } from '../../services/fmp.service';
 import { FinnhubService } from '../../services/finnhub.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaErrorBody, AlpacaBarsResponse, AlpacaSnapshotsResponse, AlpacaSnapshot } from '../../models/alpaca.models';
-import { FinnhubNewsArticle, FinnhubMetrics, FinnhubRecommendation } from '../../models/finnhub.models';
+import { FinnhubNewsArticle, FinnhubMetrics, FinnhubRecommendation, FinnhubEarningsDate, FinnhubEarningsSurprise } from '../../models/finnhub.models';
 import { ChartComponent } from '../chart/chart.component';
 import { NotificationService } from '../../services/notification.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -162,6 +162,9 @@ interface WatchlistRow {
   metricsLoading: boolean;
   recommendation: FinnhubRecommendation | null;
   recommendationLoading: boolean;
+  nextEarnings: FinnhubEarningsDate | null;
+  nextEarningsLoaded: boolean;
+  earningsSurprises: FinnhubEarningsSurprise[] | null;
 }
 
 type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'dividendYield' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'totalGainLossPercent';
@@ -424,6 +427,24 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                                   </span>
                                   <span class="range52__hi">{{ row.metrics.week52High | number:'1.0-0' }}</span>
                                 </span>
+                              </span>
+                            }
+                            @if (row.earningsSurprises?.length) {
+                              <span class="fstat fstat--surprise" title="Recent EPS beats/misses (oldest → newest)">
+                                <span class="fstat__k">EPS Surp.</span>
+                                @for (s of row.earningsSurprises; track s.period) {
+                                  <span class="surprise-dot" [class.beat]="(s.surprisePercent ?? 0) >= 0" [class.miss]="(s.surprisePercent ?? 0) < 0" [title]="s.period + ' · actual ' + (s.actual !== null ? s.actual : '—') + ' vs est ' + (s.estimate !== null ? s.estimate : '—') + ' (' + ((s.surprisePercent ?? 0) >= 0 ? '+' : '') + (s.surprisePercent | number:'1.1-1') + '%)'"></span>
+                                }
+                                @if (latestSurprise(row); as ls) {
+                                  <span [class.positive]="(ls.surprisePercent ?? 0) >= 0" [class.negative]="(ls.surprisePercent ?? 0) < 0">{{ (ls.surprisePercent ?? 0) >= 0 ? 'Beat' : 'Miss' }} {{ (ls.surprisePercent ?? 0) >= 0 ? '+' : '' }}{{ ls.surprisePercent | number:'1.1-1' }}%</span>
+                                }
+                              </span>
+                            }
+                            @if (row.nextEarnings) {
+                              <span class="fstat fstat--earn" [class.earn-soon]="daysUntilEarnings(row) !== null && daysUntilEarnings(row)! <= 7" [title]="'Next earnings report' + (row.nextEarnings.epsEstimate !== null ? (' · est. EPS $' + (row.nextEarnings.epsEstimate | number:'1.2-2')) : '')">
+                                <span class="fstat__k">⚡ Earnings</span>{{ row.nextEarnings.date + 'T00:00:00' | date:'MMM d' }}
+                                @if (daysUntilEarnings(row) !== null) { <span class="earn-days">({{ daysUntilEarnings(row) }}d)</span> }
+                                @if (earningsHourLabel(row.nextEarnings.hour)) { <span class="earn-hour">{{ earningsHourLabel(row.nextEarnings.hour) }}</span> }
                               </span>
                             }
                           </div>
@@ -895,6 +916,24 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
     }
     .fstat.positive { color: #28a745; }
     .fstat.negative { color: #dc3545; }
+    .fstat--earn {
+      border-color: rgba(240, 192, 64, 0.5);
+    }
+    .fstat--earn.earn-soon {
+      border-color: #f0c040;
+      background: rgba(240, 192, 64, 0.12);
+    }
+    .earn-days { color: #f0c040; font-weight: 600; }
+    .earn-hour { color: #8892b0; font-size: 10px; font-weight: 600; }
+    .fstat--surprise { gap: 4px; }
+    .surprise-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .surprise-dot.beat { background: #28a745; }
+    .surprise-dot.miss { background: #dc3545; }
     .fstat--range {
       gap: 8px;
     }
@@ -1234,7 +1273,7 @@ export class WatchlistComponent implements OnInit {
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false };
+        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -1263,7 +1302,7 @@ export class WatchlistComponent implements OnInit {
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
     const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
-    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false };
+    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -1419,6 +1458,9 @@ export class WatchlistComponent implements OnInit {
         metricsLoading: false,
         recommendation: null,
         recommendationLoading: false,
+        nextEarnings: null,
+        nextEarningsLoaded: false,
+        earningsSurprises: null,
       }]);
       this.clearInput();
       this.saveToStorage();
@@ -1481,6 +1523,7 @@ export class WatchlistComponent implements OnInit {
       this.loadChart(symbol);
       this.loadMetrics(symbol);
       this.loadRecommendation(symbol);
+      this.loadEarnings(symbol);
     }
   }
 
@@ -1506,6 +1549,40 @@ export class WatchlistComponent implements OnInit {
     } catch {
       this.patchRow(symbol, { recommendationLoading: false });
     }
+  }
+
+  private async loadEarnings(symbol: string): Promise<void> {
+    const row = this.watchlistRows().find(r => r.symbol === symbol);
+    if (!row || row.nextEarningsLoaded) return;
+    try {
+      const [next, surprises] = await Promise.all([
+        firstValueFrom(this.finnhubService.getNextEarnings(symbol)),
+        firstValueFrom(this.finnhubService.getEarningsSurprises(symbol)),
+      ]);
+      this.patchRow(symbol, { nextEarnings: next, earningsSurprises: surprises ?? null, nextEarningsLoaded: true });
+    } catch {
+      this.patchRow(symbol, { nextEarningsLoaded: true });
+    }
+  }
+
+  /** Most recent quarter's EPS surprise (last element, since surprises are oldest→newest). */
+  latestSurprise(row: WatchlistRow): FinnhubEarningsSurprise | null {
+    const list = row.earningsSurprises;
+    return list && list.length ? list[list.length - 1] : null;
+  }
+
+  /** Whole days until the row's next earnings date (0 if today/past, null if unknown). */
+  daysUntilEarnings(row: WatchlistRow): number | null {
+    if (!row.nextEarnings) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(row.nextEarnings.date + 'T00:00:00');
+    if (Number.isNaN(d.getTime())) return null;
+    return Math.max(0, Math.round((d.getTime() - today.getTime()) / 86_400_000));
+  }
+
+  earningsHourLabel(hour: string): string {
+    return hour === 'bmo' ? 'BMO' : hour === 'amc' ? 'AMC' : '';
   }
 
   /** Total analyst count for a recommendation month (0 if unknown). */
@@ -1563,6 +1640,7 @@ export class WatchlistComponent implements OnInit {
       this.loadChart(symbol);
       this.loadMetrics(symbol);
       this.loadRecommendation(symbol);
+      this.loadEarnings(symbol);
     } else {
       this.loadPeer(symbol);
     }
