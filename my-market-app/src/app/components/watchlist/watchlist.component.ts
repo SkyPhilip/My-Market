@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, signal, inject, input, effect, WritableSignal } from '@angular/core';
+import { Component, OnInit, computed, signal, inject, input, effect, HostListener, WritableSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -149,6 +149,10 @@ interface WatchlistRow {
   openingRangeHigh: number | null;
   openingRangeLow: number | null;
   sessionShadeUntil: Time | null;
+  range: TimeRange;
+  showMovingAverage: boolean;
+  showMovingAverage150: boolean;
+  showRangeLevels: boolean;
   peerSymbol: string | null;
   peerName: string | null;
   peerData: LineData<Time>[];
@@ -217,35 +221,6 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       @if (addError()) {
         <p class="add-error">{{ addError() }}</p>
       }
-      <div class="range-selector">
-        @for (range of timeRanges; track range) {
-          <button
-            class="range-btn"
-            [class.active]="selectedRange() === range"
-            (click)="selectRange(range)"
-          >{{ range }}</button>
-        }
-        <button
-          class="range-btn ma50-btn"
-          [class.active]="showMovingAverage()"
-          (click)="toggleMovingAverage()"
-          title="Show or hide the 50-day moving average"
-        >50MA</button>
-        <button
-          class="range-btn ma150-btn"
-          [class.active]="showMovingAverage150()"
-          (click)="toggleMovingAverage150()"
-          title="Show or hide the 150-day moving average"
-        >150MA</button>
-        @if (selectedRange() === '5D') {
-          <button
-            class="range-btn"
-            [class.active]="showRangeLevels()"
-            (click)="toggleRangeLevels()"
-            title="Show previous day range lines on 5D charts"
-          >Range High/Low</button>
-        }
-      </div>
       @if (watchlistState().prefetchOrBusy) {
         <p class="loading">Loading {{ title() | lowercase }}...</p>
       } @else if (watchlistState().errorResOrException) {
@@ -338,70 +313,110 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                     @if (row.chartLoading) {
                       <p class="chart-loading">Loading chart...</p>
                     } @else {
-                      <div class="chart-controls">
-                        @if (selectedRange() === '1D') {
-                          <div class="split-btn">
+                      <div class="chart-panel" [class.fullscreen]="fullscreenSymbol() === row.symbol">
+                        <div class="chart-toolbar">
+                          @for (range of timeRanges; track range) {
                             <button
                               type="button"
                               class="range-btn"
-                              [class.active]="openingRangeSymbols().has(row.symbol)"
-                              (click)="toggleOpeningRange(row.symbol)"
-                              title="Mark the first 15 minutes (9:30–9:45 ET) high/low"
-                            >Opening Range</button>
-                            @if (openingRangeSymbols().has(row.symbol)) {
+                              [class.active]="row.range === range"
+                              (click)="selectRange(row.symbol, range)"
+                            >{{ range }}</button>
+                          }
+                          <button
+                            type="button"
+                            class="range-btn ma50-btn"
+                            [class.active]="row.showMovingAverage"
+                            (click)="toggleMovingAverage(row.symbol)"
+                            title="Show or hide the 50-day moving average"
+                          >50MA</button>
+                          <button
+                            type="button"
+                            class="range-btn ma150-btn"
+                            [class.active]="row.showMovingAverage150"
+                            (click)="toggleMovingAverage150(row.symbol)"
+                            title="Show or hide the 150-day moving average"
+                          >150MA</button>
+                          @if (row.range === '5D') {
+                            <button
+                              type="button"
+                              class="range-btn"
+                              [class.active]="row.showRangeLevels"
+                              (click)="toggleRangeLevels(row.symbol)"
+                              title="Show previous day range lines on 5D charts"
+                            >Range High/Low</button>
+                          }
+                          @if (row.range === '1D') {
+                            <div class="split-btn">
                               <button
                                 type="button"
                                 class="range-btn"
-                                [class.active]="openingRangeNarrowSymbols().has(row.symbol)"
-                                (click)="toggleOpeningRangeNarrow(row.symbol)"
-                                title="Narrow the opening range band by 25% around its midpoint"
-                              >−25%</button>
-                            }
-                          </div>
-                        }
-                        <button
-                          type="button"
-                          class="range-btn macd-btn"
-                          [class.active]="macdSymbols().has(row.symbol)"
-                          (click)="toggleMacd(row.symbol)"
-                          title="Show or hide MACD (12/26/9) in a lower pane — most meaningful on 1M+ timeframes"
-                        >MACD</button>
-                        @if (isEtf(row.symbol)) {
-                          <span class="etf-badge" title="ETF/Fund — no comparable peer">ETF</span>
-                        } @else {
+                                [class.active]="openingRangeSymbols().has(row.symbol)"
+                                (click)="toggleOpeningRange(row.symbol)"
+                                title="Mark the first 15 minutes (9:30–9:45 ET) high/low"
+                              >Opening Range</button>
+                              @if (openingRangeSymbols().has(row.symbol)) {
+                                <button
+                                  type="button"
+                                  class="range-btn"
+                                  [class.active]="openingRangeNarrowSymbols().has(row.symbol)"
+                                  (click)="toggleOpeningRangeNarrow(row.symbol)"
+                                  title="Narrow the opening range band by 25% around its midpoint"
+                                >−25%</button>
+                              }
+                            </div>
+                          }
                           <button
                             type="button"
-                            class="peer-btn"
-                            [class.active]="peerSymbols().has(row.symbol)"
-                            [class.loading]="row.peerLoading"
-                            (click)="togglePeer(row.symbol)"
-                            [title]="row.peerName ? ('Peer: ' + row.peerName) : (row.peerSymbol ? ('Peer: ' + row.peerSymbol) : 'Show closest peer overlay')"
-                          >{{ row.peerLoading ? '…' : (row.peerSymbol ?? 'Peer') }}</button>
-                        }
+                            class="range-btn macd-btn"
+                            [class.active]="macdSymbols().has(row.symbol)"
+                            (click)="toggleMacd(row.symbol)"
+                            title="Show or hide MACD (12/26/9) in a lower pane — most meaningful on 1M+ timeframes"
+                          >MACD</button>
+                          @if (isEtf(row.symbol)) {
+                            <span class="etf-badge" title="ETF/Fund — no comparable peer">ETF</span>
+                          } @else {
+                            <button
+                              type="button"
+                              class="peer-btn"
+                              [class.active]="peerSymbols().has(row.symbol)"
+                              [class.loading]="row.peerLoading"
+                              (click)="togglePeer(row.symbol)"
+                              [title]="row.peerName ? ('Peer: ' + row.peerName) : (row.peerSymbol ? ('Peer: ' + row.peerSymbol) : 'Show closest peer overlay')"
+                            >{{ row.peerLoading ? '…' : (row.peerSymbol ?? 'Peer') }}</button>
+                          }
+                          <button
+                            type="button"
+                            class="range-btn fullscreen-btn"
+                            (click)="toggleFullscreen(row.symbol)"
+                            [title]="fullscreenSymbol() === row.symbol ? 'Exit full screen (Esc)' : 'Expand chart to full screen'"
+                          >{{ fullscreenSymbol() === row.symbol ? '✕ Close' : '⛶ Full screen' }}</button>
+                        </div>
+                        <app-chart
+                          [data]="row.chartData"
+                          [color]="'#4a9eff'"
+                          [maData]="row.maData"
+                          [showMovingAverage]="row.showMovingAverage"
+                          [ma150Data]="row.ma150Data"
+                          [showMovingAverage150]="row.showMovingAverage150"
+                          [volumeData]="row.volumeData"
+                          [volumeProfileData]="row.volumeProfileData"
+                          [showRangeLines]="row.showRangeLevels && row.range === '5D'"
+                          [rangeHigh]="row.rangeHigh"
+                          [rangeLow]="row.rangeLow"
+                          [swingHigh]="row.swingHigh"
+                          [swingLow]="row.swingLow"
+                          [showOpeningRange]="openingRangeSymbols().has(row.symbol) && row.range === '1D'"
+                          [openingRangeHigh]="openingRangeHighFor(row)"
+                          [openingRangeLow]="openingRangeLowFor(row)"
+                          [showSessionShade]="row.range === '1D'"
+                          [sessionShadeUntil]="row.sessionShadeUntil"
+                          [peerData]="row.peerData"
+                          [showPeer]="peerSymbols().has(row.symbol)"
+                          [showMacd]="macdSymbols().has(row.symbol)"
+                          [fillHeight]="fullscreenSymbol() === row.symbol"
+                        ></app-chart>
                       </div>
-                      <app-chart
-                        [data]="row.chartData"
-                        [color]="'#4a9eff'"
-                        [maData]="row.maData"
-                        [showMovingAverage]="showMovingAverage()"
-                        [ma150Data]="row.ma150Data"
-                        [showMovingAverage150]="showMovingAverage150()"
-                        [volumeData]="row.volumeData"
-                        [volumeProfileData]="row.volumeProfileData"
-                        [showRangeLines]="showRangeLevels() && selectedRange() === '5D'"
-                        [rangeHigh]="row.rangeHigh"
-                        [rangeLow]="row.rangeLow"
-                        [swingHigh]="row.swingHigh"
-                        [swingLow]="row.swingLow"
-                        [showOpeningRange]="openingRangeSymbols().has(row.symbol) && selectedRange() === '1D'"
-                        [openingRangeHigh]="openingRangeHighFor(row)"
-                        [openingRangeLow]="openingRangeLowFor(row)"
-                        [showSessionShade]="selectedRange() === '1D'"
-                        [sessionShadeUntil]="row.sessionShadeUntil"
-                        [peerData]="row.peerData"
-                        [showPeer]="peerSymbols().has(row.symbol)"
-                        [showMacd]="macdSymbols().has(row.symbol)"
-                      ></app-chart>
                     }
                   </td>
                 </tr>
@@ -617,7 +632,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       border-bottom: 1px solid #2a3a5e;
       background: #0f1a30;
       position: sticky;
-      top: 90px;
+      top: 49px;
       z-index: 40;
     }
     .watchlist-table th.sortable {
@@ -657,16 +672,6 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
     }
     .watchlist-table .negative {
       color: #dc3545;
-    }
-    .range-selector {
-      display: flex;
-      gap: 4px;
-      margin-bottom: 16px;
-      position: sticky;
-      top: 49px;
-      z-index: 50;
-      background: #1a1a2e;
-      padding: 8px 0;
     }
     .range-btn {
       background: #0f1a30;
@@ -734,18 +739,33 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       padding: 20px 0;
       text-align: center;
     }
-    .chart-controls {
+    .chart-panel {
       display: flex;
+      flex-direction: column;
+    }
+    .chart-panel.fullscreen {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: #1a1a2e;
+      padding: 12px 16px 16px;
+      gap: 8px;
+      overflow: hidden;
+    }
+    .chart-panel.fullscreen app-chart {
+      flex: 1;
+      min-height: 0;
+      display: block;
+    }
+    .chart-toolbar {
+      display: flex;
+      flex-wrap: wrap;
       justify-content: flex-start;
       align-items: center;
       gap: 6px;
       padding: 8px 0 4px;
     }
-    .chart-controls .peer-btn {
-      margin-left: auto;
-    }
-    .chart-controls .etf-badge {
-      margin-left: auto;
+    .chart-toolbar .etf-badge {
       border: 1px solid #8892b0;
       border-radius: 5px;
       color: #8892b0;
@@ -753,6 +773,15 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       font-size: 11px;
       font-weight: 600;
       background: rgba(136, 146, 176, 0.08);
+    }
+    .chart-toolbar .fullscreen-btn {
+      margin-left: auto;
+      border-color: rgba(74, 158, 255, 0.55);
+      color: #4a9eff;
+    }
+    .chart-toolbar .fullscreen-btn:hover {
+      border-color: #4a9eff;
+      color: #7bb8ff;
     }
     .split-btn {
       display: inline-flex;
@@ -852,11 +881,8 @@ export class WatchlistComponent implements OnInit {
   expandedSymbols = signal<Set<string>>(new Set());
   peerSymbols = signal<Set<string>>(new Set());
   macdSymbols = signal<Set<string>>(new Set());
+  fullscreenSymbol = signal<string | null>(null);
   readonly timeRanges: TimeRange[] = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'All'];
-  readonly selectedRange = signal<TimeRange>('1D');
-  readonly showMovingAverage = signal(false);
-  readonly showMovingAverage150 = signal(false);
-  readonly showRangeLevels = signal(false);
   openingRangeSymbols = signal<Set<string>>(new Set());
   openingRangeNarrowSymbols = signal<Set<string>>(new Set());
   readonly newsPanelOpen = signal(false);
@@ -1036,7 +1062,7 @@ export class WatchlistComponent implements OnInit {
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
+        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -1065,7 +1091,7 @@ export class WatchlistComponent implements OnInit {
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
     const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
-    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
+    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -1208,6 +1234,10 @@ export class WatchlistComponent implements OnInit {
         openingRangeHigh: null,
         openingRangeLow: null,
         sessionShadeUntil: null,
+        range: '1D',
+        showMovingAverage: false,
+        showMovingAverage150: false,
+        showRangeLevels: false,
         peerSymbol: null,
         peerName: null,
         peerData: [],
@@ -1327,7 +1357,7 @@ export class WatchlistComponent implements OnInit {
       r.symbol === symbol ? { ...r, peerLoading: true, peerData: [] } : r
     ));
 
-    const range = this.selectedRange();
+    const range = row?.range ?? '1D';
     const config = RANGE_CONFIGS[range];
     const isIntraday = range === '1D' || range === '5D' || range === '1M';
 
@@ -1383,23 +1413,38 @@ export class WatchlistComponent implements OnInit {
     }
   }
 
-  selectRange(range: TimeRange): void {
-    this.selectedRange.set(range);
-    if (range !== '5D') {
-      this.showRangeLevels.set(false);
-    }
-    for (const symbol of this.expandedSymbols()) {
-      this.loadChart(symbol);
-    }
+  private patchRow(symbol: string, patch: Partial<WatchlistRow>): void {
+    this.watchlistRows.update(rows => rows.map(r => r.symbol === symbol ? { ...r, ...patch } : r));
   }
 
-  toggleRangeLevels(): void {
-    if (this.selectedRange() !== '5D') return;
-    this.showRangeLevels.set(!this.showRangeLevels());
+  private rangeFor(symbol: string): TimeRange {
+    return this.watchlistRows().find(r => r.symbol === symbol)?.range ?? '1D';
+  }
+
+  selectRange(symbol: string, range: TimeRange): void {
+    const patch: Partial<WatchlistRow> = { range };
+    if (range !== '5D') patch.showRangeLevels = false;
+    this.patchRow(symbol, patch);
+    this.loadChart(symbol);
+  }
+
+  toggleRangeLevels(symbol: string): void {
+    const row = this.watchlistRows().find(r => r.symbol === symbol);
+    if (!row || row.range !== '5D') return;
+    this.patchRow(symbol, { showRangeLevels: !row.showRangeLevels });
+  }
+
+  toggleFullscreen(symbol: string): void {
+    this.fullscreenSymbol.update(cur => cur === symbol ? null : symbol);
+  }
+
+  @HostListener('document:keydown.escape')
+  closeFullscreen(): void {
+    if (this.fullscreenSymbol() !== null) this.fullscreenSymbol.set(null);
   }
 
   toggleOpeningRange(symbol: string): void {
-    if (this.selectedRange() !== '1D') return;
+    if (this.rangeFor(symbol) !== '1D') return;
     this.openingRangeSymbols.update(s => {
       const next = new Set(s);
       if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
@@ -1408,7 +1453,7 @@ export class WatchlistComponent implements OnInit {
   }
 
   toggleOpeningRangeNarrow(symbol: string): void {
-    if (this.selectedRange() !== '1D') return;
+    if (this.rangeFor(symbol) !== '1D') return;
     this.openingRangeNarrowSymbols.update(s => {
       const next = new Set(s);
       if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
@@ -1435,12 +1480,16 @@ export class WatchlistComponent implements OnInit {
     return this.narrowedBound(row, 'low');
   }
 
-  toggleMovingAverage(): void {
-    this.showMovingAverage.set(!this.showMovingAverage());
+  toggleMovingAverage(symbol: string): void {
+    const row = this.watchlistRows().find(r => r.symbol === symbol);
+    if (!row) return;
+    this.patchRow(symbol, { showMovingAverage: !row.showMovingAverage });
   }
 
-  toggleMovingAverage150(): void {
-    this.showMovingAverage150.set(!this.showMovingAverage150());
+  toggleMovingAverage150(symbol: string): void {
+    const row = this.watchlistRows().find(r => r.symbol === symbol);
+    if (!row) return;
+    this.patchRow(symbol, { showMovingAverage150: !row.showMovingAverage150 });
   }
 
   async openNews(symbol: string): Promise<void> {
@@ -1514,7 +1563,7 @@ export class WatchlistComponent implements OnInit {
       r.symbol === symbol ? { ...r, chartLoading: true, chartData: [] } : r
     ));
 
-    const range = this.selectedRange();
+    const range = this.watchlistRows().find(r => r.symbol === symbol)?.range ?? '1D';
     const config = RANGE_CONFIGS[range];
     const isIntraday = range === '1D' || range === '5D' || range === '1M';
 

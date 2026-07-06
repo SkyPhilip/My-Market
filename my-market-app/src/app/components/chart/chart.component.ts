@@ -60,7 +60,7 @@ interface VolumeProfileBin {
   selector: 'app-chart',
   standalone: true,
   template: `
-    <div #chartWrapper class="chart-wrapper">
+    <div #chartWrapper class="chart-wrapper" [class.fill]="fillHeight">
       <div #crosshairLabel class="crosshair-label"></div>
       <div #maTooltip class="ma-tooltip"></div>
       <div #chartContainer class="chart-container"></div>
@@ -134,6 +134,15 @@ interface VolumeProfileBin {
       position: relative;
       z-index: 1;
     }
+    .chart-wrapper.fill {
+      height: 100%;
+    }
+    .chart-wrapper.fill .chart-container {
+      height: 100%;
+    }
+    .chart-wrapper.fill .volume-profile {
+      height: 100%;
+    }
     .crosshair-label {
       position: absolute;
       top: 4px;
@@ -193,6 +202,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() showSessionShade = false;
   @Input() sessionShadeUntil: Time | null = null;
   @Input() showMacd = false;
+  @Input() fillHeight = false;
 
   private chart: IChartApi | null = null;
   private series: ISeriesApi<'Line'> | null = null;
@@ -469,7 +479,8 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     const resizeObserver = new ResizeObserver(() => {
       if (this.chart) {
         this.chart.applyOptions({
-          width: container.clientWidth
+          width: container.clientWidth,
+          height: container.clientHeight
         });
         requestAnimationFrame(() => this.renderVolumeProfile());
       }
