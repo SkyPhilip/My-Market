@@ -11,7 +11,7 @@ import { FinnhubNewsArticle } from '../../models/finnhub.models';
 import { ChartComponent } from '../chart/chart.component';
 import { NotificationService } from '../../services/notification.service';
 import { WatchlistService } from '../../services/watchlist.service';
-import { LineData, Time } from 'lightweight-charts';
+import { LineData, CandlestickData, Time } from 'lightweight-charts';
 
 type TimeRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'All';
 
@@ -136,6 +136,7 @@ interface WatchlistRow {
   totalGainLoss: number | null;
   totalGainLossPercent: number | null;
   chartData: LineData<Time>[];
+  candleData: CandlestickData<Time>[];
   chartLoading: boolean;
   volume: number | null;
   maData: LineData<Time>[];
@@ -315,6 +316,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                     } @else {
                       <div class="chart-panel" [class.fullscreen]="fullscreenSymbol() === row.symbol">
                         <div class="chart-toolbar">
+                          <span class="chart-title">{{ row.symbol }}<span class="chart-title__name">{{ row.name }}</span></span>
                           @for (range of timeRanges; track range) {
                             <button
                               type="button"
@@ -395,6 +397,8 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                         <app-chart
                           [data]="row.chartData"
                           [color]="'#4a9eff'"
+                          [candleData]="row.candleData"
+                          [showCandles]="row.range === '1D' || row.range === '5D' || row.range === '1M'"
                           [maData]="row.maData"
                           [showMovingAverage]="row.showMovingAverage"
                           [ma150Data]="row.ma150Data"
@@ -765,6 +769,18 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       gap: 6px;
       padding: 8px 0 4px;
     }
+    .chart-toolbar .chart-title {
+      font-weight: 700;
+      color: #4a9eff;
+      font-size: 15px;
+      margin-right: 4px;
+    }
+    .chart-toolbar .chart-title__name {
+      color: #8892b0;
+      font-weight: 500;
+      font-size: 12px;
+      margin-left: 6px;
+    }
     .chart-toolbar .etf-badge {
       border: 1px solid #8892b0;
       border-radius: 5px;
@@ -1062,7 +1078,7 @@ export class WatchlistComponent implements OnInit {
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
+        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -1091,7 +1107,7 @@ export class WatchlistComponent implements OnInit {
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
     const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
-    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
+    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -1222,6 +1238,7 @@ export class WatchlistComponent implements OnInit {
         totalGainLoss,
         totalGainLossPercent,
         chartData: [],
+        candleData: [],
         chartLoading: false,
         maData: [],
         ma150Data: [],
@@ -1634,6 +1651,14 @@ export class WatchlistComponent implements OnInit {
         time: chartData[i].time,
         value: bar.v
       }));
+      // Build OHLC candlestick data (used for intraday ranges 1D/5D/1M).
+      const candleData: CandlestickData<Time>[] = bars.map((bar, i) => ({
+        time: chartData[i].time,
+        open: bar.o,
+        high: bar.h,
+        low: bar.l,
+        close: bar.c,
+      }));
       const volumeProfileData = buildVolumeProfile(range === '1D' ? currentSessionBars : bars);
       const rangeLevels = range === '5D' ? buildRangeLevels(bars) : null;
       const openingRange = range === '1D' ? buildOpeningRange(currentSessionBars) : null;
@@ -1641,6 +1666,7 @@ export class WatchlistComponent implements OnInit {
         r.symbol === symbol ? {
           ...r,
           chartData,
+          candleData,
           chartLoading: false,
           maData,
           ma150Data,

@@ -1,5 +1,5 @@
 import { Component, ElementRef, Input, OnChanges, OnDestroy, SimpleChanges, ViewChild, AfterViewInit } from '@angular/core';
-import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries, HistogramSeries, HistogramData, MouseEventParams } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries, HistogramSeries, HistogramData, CandlestickSeries, CandlestickData, MouseEventParams } from 'lightweight-charts';
 
 /**
  * lightweight-charts v5 series primitive that shades the pane background from the left
@@ -203,9 +203,12 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() sessionShadeUntil: Time | null = null;
   @Input() showMacd = false;
   @Input() fillHeight = false;
+  @Input() candleData: CandlestickData<Time>[] = [];
+  @Input() showCandles = false;
 
   private chart: IChartApi | null = null;
   private series: ISeriesApi<'Line'> | null = null;
+  private candleSeries: ISeriesApi<'Candlestick'> | null = null;
   private maSeries: ISeriesApi<'Line'> | null = null;
   private ma150Series: ISeriesApi<'Line'> | null = null;
   private volumeSeries: ISeriesApi<'Histogram'> | null = null;
@@ -227,8 +230,8 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['data'] && this.series) {
-      this.series.setData(this.data);
+    if ((changes['data'] || changes['candleData'] || changes['showCandles']) && this.series) {
+      this.updateMainSeries();
       this.#fitOrFocus();
       requestAnimationFrame(() => this.renderVolumeProfile());
     }
@@ -259,6 +262,15 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     if ((changes['showMacd'] || changes['data']) && this.chart) {
       this.updateMacd();
     }
+  }
+
+  /** Shows either the line series or the candlestick series based on showCandles; both keep data so overlays/shade stay stable. */
+  private updateMainSeries(): void {
+    if (!this.series || !this.candleSeries) return;
+    this.series.setData(this.data);
+    this.candleSeries.setData(this.candleData);
+    this.series.applyOptions({ visible: !this.showCandles });
+    this.candleSeries.applyOptions({ visible: this.showCandles });
   }
 
   #fitOrFocus(): void {
@@ -310,8 +322,17 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       lineWidth: 2
     });
 
+    this.candleSeries = this.chart.addSeries(CandlestickSeries, {
+      upColor: '#28a745',
+      downColor: '#dc3545',
+      wickUpColor: '#28a745',
+      wickDownColor: '#dc3545',
+      borderVisible: false,
+      visible: false,
+    });
+
     this.sessionShade = new SessionShadePrimitive();
-    this.series.attachPrimitive(this.sessionShade);
+    this.candleSeries.attachPrimitive(this.sessionShade);
     this.sessionShade.setState(this.showSessionShade && this.data.length > 0, this.sessionShadeUntil);
 
     this.maSeries = this.chart.addSeries(LineSeries, {
@@ -350,7 +371,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     });
 
     if (this.data.length) {
-      this.series.setData(this.data);
+      this.updateMainSeries();
       this.#fitOrFocus();
     }
 
