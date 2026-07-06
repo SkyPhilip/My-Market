@@ -100,8 +100,13 @@ function buildOpeningRange(bars: Array<{ t: string; h: number; l: number }>, min
   return { high: Math.max(...windowBars.map(b => b.h)), low: Math.min(...windowBars.map(b => b.l)) };
 }
 
+/** ET (America/New_York) calendar date (YYYY-MM-DD) for an ISO bar timestamp. */
+function etSessionDate(t: string): string {
+  return new Date(t).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+
 const RANGE_CONFIGS: Record<TimeRange, RangeConfig> = {
-  '1D':  { timeframe: '1Min',   getStart: () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) },
+  '1D':  { timeframe: '1Min',   getStart: () => { const d = new Date(); d.setDate(d.getDate() - 5); return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); } },
   '5D':  { timeframe: '15Min',  getStart: () => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; } },
   '1M':  { timeframe: '1Hour',  getStart: () => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().split('T')[0]; } },
   '6M':  { timeframe: '1Day',   getStart: () => { const d = new Date(); d.setMonth(d.getMonth() - 6); return d.toISOString().split('T')[0]; } },
@@ -143,6 +148,7 @@ interface WatchlistRow {
   swingLow: number | null;
   openingRangeHigh: number | null;
   openingRangeLow: number | null;
+  sessionShadeUntil: Time | null;
   peerSymbol: string | null;
   peerName: string | null;
   peerData: LineData<Time>[];
@@ -353,6 +359,13 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                             }
                           </div>
                         }
+                        <button
+                          type="button"
+                          class="range-btn macd-btn"
+                          [class.active]="macdSymbols().has(row.symbol)"
+                          (click)="toggleMacd(row.symbol)"
+                          title="Show or hide MACD (12/26/9) in a lower pane — most meaningful on 1M+ timeframes"
+                        >MACD</button>
                         @if (isEtf(row.symbol)) {
                           <span class="etf-badge" title="ETF/Fund — no comparable peer">ETF</span>
                         } @else {
@@ -383,8 +396,11 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                         [showOpeningRange]="openingRangeSymbols().has(row.symbol) && selectedRange() === '1D'"
                         [openingRangeHigh]="openingRangeHighFor(row)"
                         [openingRangeLow]="openingRangeLowFor(row)"
+                        [showSessionShade]="selectedRange() === '1D'"
+                        [sessionShadeUntil]="row.sessionShadeUntil"
                         [peerData]="row.peerData"
                         [showPeer]="peerSymbols().has(row.symbol)"
+                        [showMacd]="macdSymbols().has(row.symbol)"
                       ></app-chart>
                     }
                   </td>
@@ -722,6 +738,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       display: flex;
       justify-content: flex-start;
       align-items: center;
+      gap: 6px;
       padding: 8px 0 4px;
     }
     .chart-controls .peer-btn {
@@ -834,6 +851,7 @@ export class WatchlistComponent implements OnInit {
   sortDirection = signal<SortDirection>('asc');
   expandedSymbols = signal<Set<string>>(new Set());
   peerSymbols = signal<Set<string>>(new Set());
+  macdSymbols = signal<Set<string>>(new Set());
   readonly timeRanges: TimeRange[] = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'All'];
   readonly selectedRange = signal<TimeRange>('1D');
   readonly showMovingAverage = signal(false);
@@ -1018,7 +1036,7 @@ export class WatchlistComponent implements OnInit {
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
+        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -1047,7 +1065,7 @@ export class WatchlistComponent implements OnInit {
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
     const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
-    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
+    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -1189,6 +1207,7 @@ export class WatchlistComponent implements OnInit {
         swingLow: null,
         openingRangeHigh: null,
         openingRangeLow: null,
+        sessionShadeUntil: null,
         peerSymbol: null,
         peerName: null,
         peerData: [],
@@ -1273,6 +1292,14 @@ export class WatchlistComponent implements OnInit {
         r.symbol === symbol ? { ...r, pegyLoading: false } : r
       ));
     }
+  }
+
+  toggleMacd(symbol: string): void {
+    this.macdSymbols.update(s => {
+      const next = new Set(s);
+      if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
+      return next;
+    });
   }
 
   togglePeer(symbol: string): void {
@@ -1493,10 +1520,26 @@ export class WatchlistComponent implements OnInit {
 
     try {
       const result = await firstValueFrom(
-        this.alpacaService.getBars(symbol, config.timeframe, config.getStart())
+        this.alpacaService.getBars(symbol, config.timeframe, config.getStart(), undefined, range === '1D' ? 5000 : 1000)
       );
       const rawBars = result?.body?.bars ?? [];
-      const chartData: LineData<Time>[] = rawBars.map(bar => {
+      // For 1D, keep only the two most recent OPEN sessions (data-driven → skips weekends/holidays).
+      let bars = rawBars;
+      let currentSessionBars = rawBars;
+      let sessionShadeUntil: Time | null = null;
+      if (range === '1D' && rawBars.length) {
+        const dates = Array.from(new Set(rawBars.map(b => etSessionDate(b.t)))).sort();
+        const lastTwo = dates.slice(-2);
+        const keep = new Set(lastTwo);
+        bars = rawBars.filter(b => keep.has(etSessionDate(b.t)));
+        const curDate = lastTwo[lastTwo.length - 1];
+        currentSessionBars = bars.filter(b => etSessionDate(b.t) === curDate);
+        if (lastTwo.length === 2 && currentSessionBars.length) {
+          const d = new Date(currentSessionBars[0].t);
+          sessionShadeUntil = (Math.floor(d.getTime() / 1000) - d.getTimezoneOffset() * 60) as Time;
+        }
+      }
+      const chartData: LineData<Time>[] = bars.map(bar => {
         if (isIntraday) {
           const barDate = new Date(bar.t);
           const tzOffsetSec = barDate.getTimezoneOffset() * 60;
@@ -1538,13 +1581,13 @@ export class WatchlistComponent implements OnInit {
         }
       }
       // Build volume data from bars
-      const volumeData: LineData<Time>[] = rawBars.map((bar, i) => ({
+      const volumeData: LineData<Time>[] = bars.map((bar, i) => ({
         time: chartData[i].time,
         value: bar.v
       }));
-      const volumeProfileData = buildVolumeProfile(rawBars);
-      const rangeLevels = range === '5D' ? buildRangeLevels(rawBars) : null;
-      const openingRange = range === '1D' ? buildOpeningRange(rawBars) : null;
+      const volumeProfileData = buildVolumeProfile(range === '1D' ? currentSessionBars : bars);
+      const rangeLevels = range === '5D' ? buildRangeLevels(bars) : null;
+      const openingRange = range === '1D' ? buildOpeningRange(currentSessionBars) : null;
       this.watchlistRows.update(rows => rows.map(r =>
         r.symbol === symbol ? {
           ...r,
@@ -1560,6 +1603,7 @@ export class WatchlistComponent implements OnInit {
           swingLow: rangeLevels?.swingLow ?? null,
           openingRangeHigh: openingRange?.high ?? null,
           openingRangeLow: openingRange?.low ?? null,
+          sessionShadeUntil,
         } : r
       ));
       if (this.peerSymbols().has(symbol)) {

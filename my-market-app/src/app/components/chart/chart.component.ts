@@ -1,5 +1,54 @@
 import { Component, ElementRef, Input, OnChanges, OnDestroy, SimpleChanges, ViewChild, AfterViewInit } from '@angular/core';
-import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries, HistogramSeries, MouseEventParams } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries, HistogramSeries, HistogramData, MouseEventParams } from 'lightweight-charts';
+
+/**
+ * lightweight-charts v5 series primitive that shades the pane background from the left
+ * edge up to a given time (used to highlight the previous trading session on 1D charts).
+ */
+class SessionShadePrimitive {
+  #chart: IChartApi | null = null;
+  #enabled = false;
+  #until: Time | null = null;
+  #requestUpdate?: () => void;
+
+  attached(param: { chart: IChartApi; requestUpdate: () => void }): void {
+    this.#chart = param.chart;
+    this.#requestUpdate = param.requestUpdate;
+  }
+
+  detached(): void {
+    this.#chart = null;
+    this.#requestUpdate = undefined;
+  }
+
+  setState(enabled: boolean, until: Time | null): void {
+    this.#enabled = enabled;
+    this.#until = until;
+    this.#requestUpdate?.();
+  }
+
+  updateAllViews(): void { /* state pulled lazily in the renderer */ }
+
+  paneViews() {
+    const self = this;
+    return [{
+      zOrder: () => 'bottom' as const,
+      renderer: () => ({
+        draw: (target: { useBitmapCoordinateSpace: (cb: (scope: { context: CanvasRenderingContext2D; horizontalPixelRatio: number; bitmapSize: { height: number } }) => void) => void }) => {
+          if (!self.#enabled || self.#until === null || !self.#chart) return;
+          const x = self.#chart.timeScale().timeToCoordinate(self.#until);
+          if (x === null) return;
+          target.useBitmapCoordinateSpace(scope => {
+            const right = x * scope.horizontalPixelRatio;
+            if (right <= 0) return;
+            scope.context.fillStyle = 'rgba(120, 144, 200, 0.10)';
+            scope.context.fillRect(0, 0, right, scope.bitmapSize.height);
+          });
+        },
+      }),
+    }];
+  }
+}
 
 interface VolumeProfileBin {
   price: number;
@@ -141,6 +190,9 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() openingRangeLow: number | null = null;
   @Input() peerData: LineData<Time>[] = [];
   @Input() showPeer = false;
+  @Input() showSessionShade = false;
+  @Input() sessionShadeUntil: Time | null = null;
+  @Input() showMacd = false;
 
   private chart: IChartApi | null = null;
   private series: ISeriesApi<'Line'> | null = null;
@@ -154,6 +206,10 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   private orHighSeries: ISeriesApi<'Line'> | null = null;
   private orLowSeries: ISeriesApi<'Line'> | null = null;
   private peerSeries: ISeriesApi<'Line'> | null = null;
+  private macdSeries: ISeriesApi<'Line'> | null = null;
+  private macdSignalSeries: ISeriesApi<'Line'> | null = null;
+  private macdHistSeries: ISeriesApi<'Histogram'> | null = null;
+  private sessionShade: SessionShadePrimitive | null = null;
   @ViewChild('volumeProfile') volumeProfile!: ElementRef<HTMLDivElement>;
 
   ngAfterViewInit(): void {
@@ -163,7 +219,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['data'] && this.series) {
       this.series.setData(this.data);
-      this.chart?.timeScale().fitContent();
+      this.#fitOrFocus();
       requestAnimationFrame(() => this.renderVolumeProfile());
     }
     if ((changes['maData'] || changes['showMovingAverage']) && this.maSeries) {
@@ -186,6 +242,24 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     }
     if ((changes['showOpeningRange'] || changes['openingRangeHigh'] || changes['openingRangeLow'] || changes['data']) && this.chart) {
       this.updateOpeningRangeLines();
+    }
+    if ((changes['showSessionShade'] || changes['sessionShadeUntil'] || changes['data']) && this.sessionShade) {
+      this.sessionShade.setState(this.showSessionShade && this.data.length > 0, this.sessionShadeUntil);
+    }
+    if ((changes['showMacd'] || changes['data']) && this.chart) {
+      this.updateMacd();
+    }
+  }
+
+  #fitOrFocus(): void {
+    if (!this.chart || !this.data.length) return;
+    const ts = this.chart.timeScale();
+    // For the 1D two-session view, show the current session full-width and let the
+    // user scroll left into the shaded previous session; otherwise fit everything.
+    if (this.showSessionShade && this.sessionShadeUntil !== null) {
+      ts.setVisibleRange({ from: this.sessionShadeUntil, to: this.data[this.data.length - 1].time });
+    } else {
+      ts.fitContent();
     }
   }
 
@@ -226,6 +300,10 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       lineWidth: 2
     });
 
+    this.sessionShade = new SessionShadePrimitive();
+    this.series.attachPrimitive(this.sessionShade);
+    this.sessionShade.setState(this.showSessionShade && this.data.length > 0, this.sessionShadeUntil);
+
     this.maSeries = this.chart.addSeries(LineSeries, {
       color: '#f0c040',
       lineWidth: 1,
@@ -263,7 +341,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
 
     if (this.data.length) {
       this.series.setData(this.data);
-      this.chart.timeScale().fitContent();
+      this.#fitOrFocus();
     }
 
     this.rangeHighSeries = this.chart.addSeries(LineSeries, {
@@ -333,6 +411,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.updateMovingAverageSeries();
     this.updateMovingAverage150Series();
     this.updatePeerSeries();
+    this.updateMacd();
 
     if (this.volumeData.length) {
       this.volumeSeries.setData(this.volumeData);
@@ -478,6 +557,82 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     }
 
     this.peerSeries.setData(this.peerData);
+  }
+
+  /** Exponential moving average over a numeric series (seeded with the first value). */
+  private ema(values: number[], period: number): number[] {
+    const k = 2 / (period + 1);
+    const out: number[] = [];
+    let prev = 0;
+    for (let i = 0; i < values.length; i++) {
+      prev = i === 0 ? values[i] : values[i] * k + prev * (1 - k);
+      out.push(prev);
+    }
+    return out;
+  }
+
+  /** Creates the second-pane MACD series when enabled and updates their data, or removes them when disabled. */
+  private updateMacd(): void {
+    if (!this.chart) return;
+
+    if (!this.showMacd || this.data.length < 2) {
+      this.removeMacd();
+      return;
+    }
+
+    if (!this.macdHistSeries) {
+      this.macdHistSeries = this.chart.addSeries(HistogramSeries, {
+        priceFormat: { type: 'price', precision: 3, minMove: 0.001 },
+        priceLineVisible: false,
+        lastValueVisible: false,
+      }, 1);
+      this.macdSeries = this.chart.addSeries(LineSeries, {
+        color: '#4a9eff',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      }, 1);
+      this.macdSignalSeries = this.chart.addSeries(LineSeries, {
+        color: '#f0934e',
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      }, 1);
+      this.chart.panes()[1]?.setHeight(120);
+    }
+
+    const values = this.data.map(d => d.value);
+    const ema12 = this.ema(values, 12);
+    const ema26 = this.ema(values, 26);
+    const macd = values.map((_, i) => ema12[i] - ema26[i]);
+    const signal = this.ema(macd, 9);
+
+    const macdData: LineData<Time>[] = [];
+    const signalData: LineData<Time>[] = [];
+    const histData: HistogramData<Time>[] = [];
+    for (let i = 0; i < this.data.length; i++) {
+      const time = this.data[i].time;
+      macdData.push({ time, value: +macd[i].toFixed(4) });
+      signalData.push({ time, value: +signal[i].toFixed(4) });
+      const hist = macd[i] - signal[i];
+      histData.push({ time, value: +hist.toFixed(4), color: hist >= 0 ? 'rgba(40, 167, 69, 0.6)' : 'rgba(220, 53, 69, 0.6)' });
+    }
+
+    this.macdHistSeries!.setData(histData);
+    this.macdSeries!.setData(macdData);
+    this.macdSignalSeries!.setData(signalData);
+  }
+
+  private removeMacd(): void {
+    if (!this.chart) return;
+    if (this.macdSeries) this.chart.removeSeries(this.macdSeries);
+    if (this.macdSignalSeries) this.chart.removeSeries(this.macdSignalSeries);
+    if (this.macdHistSeries) this.chart.removeSeries(this.macdHistSeries);
+    this.macdSeries = null;
+    this.macdSignalSeries = null;
+    this.macdHistSeries = null;
   }
 
   private renderVolumeProfile(): void {
