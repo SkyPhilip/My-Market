@@ -7,7 +7,7 @@ import { FmpService } from '../../services/fmp.service';
 import { FinnhubService } from '../../services/finnhub.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaErrorBody, AlpacaBarsResponse, AlpacaSnapshotsResponse, AlpacaSnapshot } from '../../models/alpaca.models';
-import { FinnhubNewsArticle } from '../../models/finnhub.models';
+import { FinnhubNewsArticle, FinnhubMetrics, FinnhubRecommendation } from '../../models/finnhub.models';
 import { ChartComponent } from '../chart/chart.component';
 import { NotificationService } from '../../services/notification.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -158,6 +158,10 @@ interface WatchlistRow {
   peerName: string | null;
   peerData: LineData<Time>[];
   peerLoading: boolean;
+  metrics: FinnhubMetrics | null;
+  metricsLoading: boolean;
+  recommendation: FinnhubRecommendation | null;
+  recommendationLoading: boolean;
 }
 
 type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'dividendYield' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'totalGainLossPercent';
@@ -394,6 +398,66 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                             [title]="fullscreenSymbol() === row.symbol ? 'Exit full screen (Esc)' : 'Expand chart to full screen'"
                           >{{ fullscreenSymbol() === row.symbol ? '✕ Close' : '⛶ Full screen' }}</button>
                         </div>
+                        @if (row.metricsLoading) {
+                          <div class="fundamentals fundamentals--state">Loading fundamentals…</div>
+                        } @else if (row.metrics) {
+                          <div class="fundamentals">
+                            <span class="fstat" title="Beta — volatility vs. the market (1.0 = market)"><span class="fstat__k">β</span>{{ row.metrics.beta !== null ? (row.metrics.beta | number:'1.2-2') : '—' }}</span>
+                            <span class="fstat" title="Price / Earnings (TTM)"><span class="fstat__k">P/E</span>{{ row.metrics.peTTM !== null ? (row.metrics.peTTM | number:'1.1-1') : '—' }}</span>
+                            <span class="fstat" title="Price / Sales (TTM)"><span class="fstat__k">P/S</span>{{ row.metrics.psTTM !== null ? (row.metrics.psTTM | number:'1.1-1') : '—' }}</span>
+                            <span class="fstat" title="Price / Book"><span class="fstat__k">P/B</span>{{ row.metrics.pbAnnual !== null ? (row.metrics.pbAnnual | number:'1.1-1') : '—' }}</span>
+                            <span class="fstat" title="Return on Equity (TTM)"><span class="fstat__k">ROE</span>{{ row.metrics.roeTTM !== null ? ((row.metrics.roeTTM | number:'1.0-0') + '%') : '—' }}</span>
+                            <span class="fstat" title="Net profit margin (TTM)"><span class="fstat__k">Margin</span>{{ row.metrics.netMarginTTM !== null ? ((row.metrics.netMarginTTM | number:'1.0-0') + '%') : '—' }}</span>
+                            <span class="fstat" title="Total debt / total equity"><span class="fstat__k">D/E</span>{{ row.metrics.debtToEquity !== null ? (row.metrics.debtToEquity | number:'1.2-2') : '—' }}</span>
+                            <span class="fstat" title="Current ratio (liquidity)"><span class="fstat__k">Curr</span>{{ row.metrics.currentRatio !== null ? (row.metrics.currentRatio | number:'1.2-2') : '—' }}</span>
+                            <span class="fstat" title="Revenue growth (YoY, TTM)" [class.positive]="(row.metrics.revenueGrowthYoY ?? 0) >= 0" [class.negative]="(row.metrics.revenueGrowthYoY ?? 0) < 0"><span class="fstat__k">Rev</span>{{ row.metrics.revenueGrowthYoY !== null ? ((row.metrics.revenueGrowthYoY >= 0 ? '+' : '') + (row.metrics.revenueGrowthYoY | number:'1.0-0') + '%') : '—' }}</span>
+                            <span class="fstat" title="EPS growth (5-year)" [class.positive]="(row.metrics.epsGrowth5Y ?? 0) >= 0" [class.negative]="(row.metrics.epsGrowth5Y ?? 0) < 0"><span class="fstat__k">EPS 5Y</span>{{ row.metrics.epsGrowth5Y !== null ? ((row.metrics.epsGrowth5Y >= 0 ? '+' : '') + (row.metrics.epsGrowth5Y | number:'1.0-0') + '%') : '—' }}</span>
+                            @if (row.metrics.week52Low !== null && row.metrics.week52High !== null) {
+                              <span class="fstat fstat--range" title="52-week range vs. current price">
+                                <span class="fstat__k">52W</span>
+                                <span class="range52">
+                                  <span class="range52__lo">{{ row.metrics.week52Low | number:'1.0-0' }}</span>
+                                  <span class="range52__bar">
+                                    @if (week52Position(row) !== null) {
+                                      <span class="range52__marker" [style.left.%]="week52Position(row)"></span>
+                                    }
+                                  </span>
+                                  <span class="range52__hi">{{ row.metrics.week52High | number:'1.0-0' }}</span>
+                                </span>
+                              </span>
+                            }
+                          </div>
+                        }
+                        @if (row.recommendationLoading) {
+                          <div class="reco reco--state">Loading analyst ratings…</div>
+                        } @else if (row.recommendation && recoTotal(row.recommendation) > 0) {
+                          <div class="reco" [title]="'Analyst recommendations (' + row.recommendation.period + ')'">
+                            <span class="fstat__k">Analysts</span>
+                            <span class="reco-bar">
+                              @if (row.recommendation.strongBuy) {
+                                <span class="reco-seg reco-seg--sb" [style.width.%]="row.recommendation.strongBuy / recoTotal(row.recommendation) * 100" [title]="'Strong Buy: ' + row.recommendation.strongBuy"></span>
+                              }
+                              @if (row.recommendation.buy) {
+                                <span class="reco-seg reco-seg--b" [style.width.%]="row.recommendation.buy / recoTotal(row.recommendation) * 100" [title]="'Buy: ' + row.recommendation.buy"></span>
+                              }
+                              @if (row.recommendation.hold) {
+                                <span class="reco-seg reco-seg--h" [style.width.%]="row.recommendation.hold / recoTotal(row.recommendation) * 100" [title]="'Hold: ' + row.recommendation.hold"></span>
+                              }
+                              @if (row.recommendation.sell) {
+                                <span class="reco-seg reco-seg--s" [style.width.%]="row.recommendation.sell / recoTotal(row.recommendation) * 100" [title]="'Sell: ' + row.recommendation.sell"></span>
+                              }
+                              @if (row.recommendation.strongSell) {
+                                <span class="reco-seg reco-seg--ss" [style.width.%]="row.recommendation.strongSell / recoTotal(row.recommendation) * 100" [title]="'Strong Sell: ' + row.recommendation.strongSell"></span>
+                              }
+                            </span>
+                            <span class="reco-counts">
+                              <span class="reco-counts__buy">{{ row.recommendation.strongBuy + row.recommendation.buy }} Buy</span>
+                              <span class="reco-counts__hold">{{ row.recommendation.hold }} Hold</span>
+                              <span class="reco-counts__sell">{{ row.recommendation.sell + row.recommendation.strongSell }} Sell</span>
+                              <span class="reco-counts__total">({{ recoTotal(row.recommendation) }})</span>
+                            </span>
+                          </div>
+                        }
                         <app-chart
                           [data]="row.chartData"
                           [color]="'#4a9eff'"
@@ -799,6 +863,98 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       border-color: #4a9eff;
       color: #7bb8ff;
     }
+    .fundamentals {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 2px 0 8px;
+    }
+    .fundamentals--state {
+      color: #8892b0;
+      font-size: 12px;
+      padding: 4px 0 10px;
+    }
+    .fstat {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #0f1a30;
+      border: 1px solid #2a3a5e;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 12px;
+      color: #e0e0e0;
+      white-space: nowrap;
+    }
+    .fstat__k {
+      color: #8892b0;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+    .fstat.positive { color: #28a745; }
+    .fstat.negative { color: #dc3545; }
+    .fstat--range {
+      gap: 8px;
+    }
+    .range52 {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #8892b0;
+    }
+    .range52__bar {
+      position: relative;
+      width: 70px;
+      height: 4px;
+      border-radius: 2px;
+      background: linear-gradient(to right, #dc3545, #f0c040, #28a745);
+    }
+    .range52__marker {
+      position: absolute;
+      top: -3px;
+      width: 2px;
+      height: 10px;
+      background: #e0e0e0;
+      border-radius: 1px;
+      transform: translateX(-1px);
+    }
+    .reco {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 0 10px;
+      font-size: 12px;
+    }
+    .reco--state {
+      color: #8892b0;
+    }
+    .reco-bar {
+      display: inline-flex;
+      width: 180px;
+      height: 10px;
+      border-radius: 5px;
+      overflow: hidden;
+      border: 1px solid #2a3a5e;
+      background: #0f1a30;
+    }
+    .reco-seg { height: 100%; }
+    .reco-seg--sb { background: #1a7f37; }
+    .reco-seg--b  { background: #28a745; }
+    .reco-seg--h  { background: #8892b0; }
+    .reco-seg--s  { background: #dc3545; }
+    .reco-seg--ss { background: #a11221; }
+    .reco-counts {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      color: #8892b0;
+    }
+    .reco-counts__buy { color: #28a745; font-weight: 600; }
+    .reco-counts__hold { color: #a0a0b0; font-weight: 600; }
+    .reco-counts__sell { color: #dc3545; font-weight: 600; }
+    .reco-counts__total { color: #5a6a8a; }
     .split-btn {
       display: inline-flex;
     }
@@ -1078,7 +1234,7 @@ export class WatchlistComponent implements OnInit {
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
+        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -1107,7 +1263,7 @@ export class WatchlistComponent implements OnInit {
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
     const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
-    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false };
+    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -1259,6 +1415,10 @@ export class WatchlistComponent implements OnInit {
         peerName: null,
         peerData: [],
         peerLoading: false,
+        metrics: null,
+        metricsLoading: false,
+        recommendation: null,
+        recommendationLoading: false,
       }]);
       this.clearInput();
       this.saveToStorage();
@@ -1319,7 +1479,48 @@ export class WatchlistComponent implements OnInit {
     } else {
       this.expandedSymbols.update(s => new Set(s).add(symbol));
       this.loadChart(symbol);
+      this.loadMetrics(symbol);
+      this.loadRecommendation(symbol);
     }
+  }
+
+  private async loadMetrics(symbol: string): Promise<void> {
+    const row = this.watchlistRows().find(r => r.symbol === symbol);
+    if (!row || row.metrics || row.metricsLoading) return;
+    this.patchRow(symbol, { metricsLoading: true });
+    try {
+      const metrics = await firstValueFrom(this.finnhubService.getBasicFinancials(symbol));
+      this.patchRow(symbol, { metrics: metrics ?? null, metricsLoading: false });
+    } catch {
+      this.patchRow(symbol, { metricsLoading: false });
+    }
+  }
+
+  private async loadRecommendation(symbol: string): Promise<void> {
+    const row = this.watchlistRows().find(r => r.symbol === symbol);
+    if (!row || row.recommendation || row.recommendationLoading) return;
+    this.patchRow(symbol, { recommendationLoading: true });
+    try {
+      const trends = await firstValueFrom(this.finnhubService.getRecommendationTrends(symbol));
+      this.patchRow(symbol, { recommendation: trends?.[0] ?? null, recommendationLoading: false });
+    } catch {
+      this.patchRow(symbol, { recommendationLoading: false });
+    }
+  }
+
+  /** Total analyst count for a recommendation month (0 if unknown). */
+  recoTotal(reco: FinnhubRecommendation | null): number {
+    if (!reco) return 0;
+    return reco.strongBuy + reco.buy + reco.hold + reco.sell + reco.strongSell;
+  }
+
+  /** Current price's position within the 52-week range, as a 0–100% figure (null if unknown). */
+  week52Position(row: WatchlistRow): number | null {
+    const m = row.metrics;
+    if (!m || m.week52High === null || m.week52Low === null || row.price === null) return null;
+    const span = m.week52High - m.week52Low;
+    if (span <= 0) return null;
+    return Math.max(0, Math.min(100, +(((row.price - m.week52Low) / span) * 100).toFixed(1)));
   }
 
   readonly pegyTooltip = 'PEGY = (P/E) \u00f7 (EPS growth % + dividend yield %)\nLower is cheaper relative to growth + income.';
@@ -1360,6 +1561,8 @@ export class WatchlistComponent implements OnInit {
     if (!this.expandedSymbols().has(symbol)) {
       this.expandedSymbols.update(s => new Set(s).add(symbol));
       this.loadChart(symbol);
+      this.loadMetrics(symbol);
+      this.loadRecommendation(symbol);
     } else {
       this.loadPeer(symbol);
     }
