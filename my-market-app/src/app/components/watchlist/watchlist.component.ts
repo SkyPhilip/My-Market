@@ -139,8 +139,10 @@ interface WatchlistRow {
   candleData: CandlestickData<Time>[];
   chartLoading: boolean;
   volume: number | null;
+  ma20Data: LineData<Time>[];
   maData: LineData<Time>[];
   ma150Data: LineData<Time>[];
+  ma200Data: LineData<Time>[];
   volumeData: LineData<Time>[];
   volumeProfileData: VolumeProfileBin[];
   rangeHigh: number | null;
@@ -151,8 +153,10 @@ interface WatchlistRow {
   openingRangeLow: number | null;
   sessionShadeUntil: Time | null;
   range: TimeRange;
+  showMovingAverage20: boolean;
   showMovingAverage: boolean;
   showMovingAverage150: boolean;
+  showMovingAverage200: boolean;
   showRangeLevels: boolean;
   peerSymbol: string | null;
   peerName: string | null;
@@ -334,18 +338,32 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                           }
                           <button
                             type="button"
+                            class="range-btn ma20-btn"
+                            [class.active]="row.showMovingAverage20"
+                            (click)="toggleMovingAverage20(row.symbol)"
+                            title="Show or hide the 20-period moving average (window scales with the selected timeframe)"
+                          >20MA</button>
+                          <button
+                            type="button"
                             class="range-btn ma50-btn"
                             [class.active]="row.showMovingAverage"
                             (click)="toggleMovingAverage(row.symbol)"
-                            title="Show or hide the 50-day moving average"
+                            title="Show or hide the 50-period moving average (window scales with the selected timeframe)"
                           >50MA</button>
                           <button
                             type="button"
                             class="range-btn ma150-btn"
                             [class.active]="row.showMovingAverage150"
                             (click)="toggleMovingAverage150(row.symbol)"
-                            title="Show or hide the 150-day moving average"
+                            title="Show or hide the 150-period moving average (window scales with the selected timeframe)"
                           >150MA</button>
+                          <button
+                            type="button"
+                            class="range-btn ma200-btn"
+                            [class.active]="row.showMovingAverage200"
+                            (click)="toggleMovingAverage200(row.symbol)"
+                            title="Show or hide the 200-period moving average (window scales with the selected timeframe)"
+                          >200MA</button>
                           @if (row.range === '5D') {
                             <button
                               type="button"
@@ -486,8 +504,12 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                           [showCandles]="row.range === '1D' || row.range === '5D' || row.range === '1M'"
                           [maData]="row.maData"
                           [showMovingAverage]="row.showMovingAverage"
+                          [ma20Data]="row.ma20Data"
+                          [showMovingAverage20]="row.showMovingAverage20"
                           [ma150Data]="row.ma150Data"
                           [showMovingAverage150]="row.showMovingAverage150"
+                          [ma200Data]="row.ma200Data"
+                          [showMovingAverage200]="row.showMovingAverage200"
                           [volumeData]="row.volumeData"
                           [volumeProfileData]="row.volumeProfileData"
                           [showRangeLines]="row.showRangeLevels && row.range === '5D'"
@@ -795,6 +817,19 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       border-color: #f0c040;
       color: #1a1a2e;
     }
+    .range-btn.ma20-btn {
+      border-color: rgba(77, 208, 225, 0.55);
+      color: #4dd0e1;
+    }
+    .range-btn.ma20-btn:hover {
+      border-color: #4dd0e1;
+      color: #7ee0ec;
+    }
+    .range-btn.ma20-btn.active {
+      background: #4dd0e1;
+      border-color: #4dd0e1;
+      color: #1a1a2e;
+    }
     .range-btn.ma150-btn {
       border-color: rgba(176, 124, 255, 0.6);
       color: #b07cff;
@@ -806,6 +841,19 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
     .range-btn.ma150-btn.active {
       background: #b07cff;
       border-color: #b07cff;
+      color: #fff;
+    }
+    .range-btn.ma200-btn {
+      border-color: rgba(236, 64, 122, 0.6);
+      color: #ec407a;
+    }
+    .range-btn.ma200-btn:hover {
+      border-color: #ec407a;
+      color: #f27ca4;
+    }
+    .range-btn.ma200-btn.active {
+      background: #ec407a;
+      border-color: #ec407a;
       color: #fff;
     }
     .clickable-row {
@@ -1273,7 +1321,7 @@ export class WatchlistComponent implements OnInit {
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
+        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -1302,7 +1350,7 @@ export class WatchlistComponent implements OnInit {
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
     const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
-    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage: false, showMovingAverage150: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
+    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -1435,8 +1483,10 @@ export class WatchlistComponent implements OnInit {
         chartData: [],
         candleData: [],
         chartLoading: false,
+        ma20Data: [],
         maData: [],
         ma150Data: [],
+        ma200Data: [],
         volumeData: [],
         volumeProfileData: [],
         rangeHigh: null,
@@ -1447,8 +1497,10 @@ export class WatchlistComponent implements OnInit {
         openingRangeLow: null,
         sessionShadeUntil: null,
         range: '1D',
+        showMovingAverage20: false,
         showMovingAverage: false,
         showMovingAverage150: false,
+        showMovingAverage200: false,
         showRangeLevels: false,
         peerSymbol: null,
         peerName: null,
@@ -1784,10 +1836,22 @@ export class WatchlistComponent implements OnInit {
     this.patchRow(symbol, { showMovingAverage: !row.showMovingAverage });
   }
 
+  toggleMovingAverage20(symbol: string): void {
+    const row = this.watchlistRows().find(r => r.symbol === symbol);
+    if (!row) return;
+    this.patchRow(symbol, { showMovingAverage20: !row.showMovingAverage20 });
+  }
+
   toggleMovingAverage150(symbol: string): void {
     const row = this.watchlistRows().find(r => r.symbol === symbol);
     if (!row) return;
     this.patchRow(symbol, { showMovingAverage150: !row.showMovingAverage150 });
+  }
+
+  toggleMovingAverage200(symbol: string): void {
+    const row = this.watchlistRows().find(r => r.symbol === symbol);
+    if (!row) return;
+    this.patchRow(symbol, { showMovingAverage200: !row.showMovingAverage200 });
   }
 
   async openNews(symbol: string): Promise<void> {
@@ -1901,17 +1965,33 @@ export class WatchlistComponent implements OnInit {
           };
         }
       });
-      // Compute 50-period moving average (cumulative for first 49 points)
+      // Moving averages counted in bars, so the window scales with the timeframe fidelity
+      // (e.g. 20 bars = 20 minutes on 1D, 20 days on 6M). Cumulative until enough bars exist.
+      const ma20Data: LineData<Time>[] = [];
       const maData: LineData<Time>[] = [];
       const ma150Data: LineData<Time>[] = [];
+      const ma200Data: LineData<Time>[] = [];
+      const period20 = 20;
       const period = 50;
       const period150 = 150;
+      const period200 = 200;
       if (chartData.length > 0) {
+        let sum20 = 0;
         let sum = 0;
         let sum150 = 0;
+        let sum200 = 0;
         for (let i = 0; i < chartData.length; i++) {
+          sum20 += chartData[i].value;
           sum += chartData[i].value;
           sum150 += chartData[i].value;
+          sum200 += chartData[i].value;
+          if (i >= period20) {
+            sum20 -= chartData[i - period20].value;
+            ma20Data.push({ time: chartData[i].time, value: +(sum20 / period20).toFixed(2) });
+          } else {
+            ma20Data.push({ time: chartData[i].time, value: +(sum20 / (i + 1)).toFixed(2) });
+          }
+
           if (i >= period) {
             sum -= chartData[i - period].value;
             maData.push({ time: chartData[i].time, value: +(sum / period).toFixed(2) });
@@ -1924,6 +2004,13 @@ export class WatchlistComponent implements OnInit {
             ma150Data.push({ time: chartData[i].time, value: +(sum150 / period150).toFixed(2) });
           } else {
             ma150Data.push({ time: chartData[i].time, value: +(sum150 / (i + 1)).toFixed(2) });
+          }
+
+          if (i >= period200) {
+            sum200 -= chartData[i - period200].value;
+            ma200Data.push({ time: chartData[i].time, value: +(sum200 / period200).toFixed(2) });
+          } else {
+            ma200Data.push({ time: chartData[i].time, value: +(sum200 / (i + 1)).toFixed(2) });
           }
         }
       }
@@ -1949,8 +2036,10 @@ export class WatchlistComponent implements OnInit {
           chartData,
           candleData,
           chartLoading: false,
+          ma20Data,
           maData,
           ma150Data,
+          ma200Data,
           volumeData,
           volumeProfileData,
           rangeHigh: rangeLevels?.rangeHigh ?? null,
