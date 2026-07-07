@@ -414,6 +414,13 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                           }
                           <button
                             type="button"
+                            class="range-btn news-toolbar-btn"
+                            (click)="openNews(row.symbol)"
+                            [attr.aria-label]="'View news for ' + row.symbol"
+                            title="View news"
+                          >📰 News</button>
+                          <button
+                            type="button"
                             class="range-btn fullscreen-btn"
                             (click)="toggleFullscreen(row.symbol)"
                             [title]="fullscreenSymbol() === row.symbol ? 'Exit full screen (Esc)' : 'Expand chart to full screen'"
@@ -923,8 +930,16 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       font-weight: 600;
       background: rgba(136, 146, 176, 0.08);
     }
-    .chart-toolbar .fullscreen-btn {
+    .chart-toolbar .news-toolbar-btn {
       margin-left: auto;
+      border-color: rgba(240, 192, 64, 0.55);
+      color: #f0c040;
+    }
+    .chart-toolbar .news-toolbar-btn:hover {
+      border-color: #f0c040;
+      color: #f6d16d;
+    }
+    .chart-toolbar .fullscreen-btn {
       border-color: rgba(74, 158, 255, 0.55);
       color: #4a9eff;
     }

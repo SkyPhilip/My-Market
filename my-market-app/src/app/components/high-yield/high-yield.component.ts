@@ -141,8 +141,8 @@ export class HighYieldComponent implements OnInit {
     this.loading.set(true);
     this.error.set(null);
     try {
-      const sectors = Object.keys(SECTOR_SYMBOLS);
-      const all = await firstValueFrom(this.fmp.getHighYieldStocks(sectors));
+      const symbols = [...new Set(Object.values(SECTOR_SYMBOLS).flatMap(list => list.slice(0, 10)))];
+      const all = await firstValueFrom(this.fmp.getHighYieldStocks(symbols));
       const rows = all.slice(0, MAX_ROWS);
       this.rows.set(rows);
       this.asOf.set(new Date().toLocaleDateString());

@@ -14,6 +14,17 @@ export interface FmpProfile {
   isActivelyTrading: boolean;
 }
 
+/** The subset of profile fields the app actually reads — persisted to sessionStorage to save FMP quota. */
+export interface FmpProfileSlim {
+  symbol: string;
+  companyName: string;
+  sector: string;
+  price: number;
+  lastDividend?: number;
+  isEtf: boolean;
+  isFund?: boolean;
+}
+
 export interface FmpRatiosTtm {
   symbol: string;
   priceToEarningsRatioTTM?: number;
