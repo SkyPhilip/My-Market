@@ -380,8 +380,8 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                             class="range-btn macd-btn"
                             [class.active]="macdSymbols().has(row.symbol)"
                             (click)="toggleMacd(row.symbol)"
-                            title="Show or hide MACD (12/26/9) in a lower pane — most meaningful on 1M+ timeframes"
-                          >MACD</button>
+                            title="Show or hide Impulse MACD (34/9) in a lower pane — flat inside the channel, impulses on momentum breakouts"
+                          >iMACD</button>
                           @if (isEtf(row.symbol)) {
                             <span class="etf-badge" title="ETF/Fund — no comparable peer">ETF</span>
                           } @else {

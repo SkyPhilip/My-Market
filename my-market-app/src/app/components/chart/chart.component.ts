@@ -259,7 +259,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     if ((changes['showSessionShade'] || changes['sessionShadeUntil'] || changes['data']) && this.sessionShade) {
       this.sessionShade.setState(this.showSessionShade && this.data.length > 0, this.sessionShadeUntil);
     }
-    if ((changes['showMacd'] || changes['data']) && this.chart) {
+    if ((changes['showMacd'] || changes['data'] || changes['candleData']) && this.chart) {
       this.updateMacd();
     }
   }
@@ -603,11 +603,35 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     return out;
   }
 
-  /** Creates the second-pane MACD series when enabled and updates their data, or removes them when disabled. */
+  /** Smoothed (Wilder-style) moving average, seeded with the first value. */
+  private smma(values: number[], period: number): number[] {
+    const out: number[] = [];
+    let prev = 0;
+    for (let i = 0; i < values.length; i++) {
+      prev = i === 0 ? values[i] : (prev * (period - 1) + values[i]) / period;
+      out.push(prev);
+    }
+    return out;
+  }
+
+  /** Simple moving average (uses the available window for the first `period-1` points). */
+  private sma(values: number[], period: number): number[] {
+    const out: number[] = [];
+    let sum = 0;
+    for (let i = 0; i < values.length; i++) {
+      sum += values[i];
+      if (i >= period) sum -= values[i - period];
+      out.push(sum / Math.min(i + 1, period));
+    }
+    return out;
+  }
+
+  /** Creates the second-pane Impulse MACD series when enabled and updates their data, or removes them when disabled. */
   private updateMacd(): void {
     if (!this.chart) return;
 
-    if (!this.showMacd || this.data.length < 2) {
+    const candles = this.candleData;
+    if (!this.showMacd || candles.length < 2) {
       this.removeMacd();
       return;
     }
@@ -618,15 +642,8 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
         priceLineVisible: false,
         lastValueVisible: false,
       }, 1);
-      this.macdSeries = this.chart.addSeries(LineSeries, {
-        color: '#4a9eff',
-        lineWidth: 2,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-      }, 1);
       this.macdSignalSeries = this.chart.addSeries(LineSeries, {
-        color: '#f0934e',
+        color: '#8892b0',
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
@@ -635,25 +652,32 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       this.chart.panes()[1]?.setHeight(120);
     }
 
-    const values = this.data.map(d => d.value);
-    const ema12 = this.ema(values, 12);
-    const ema26 = this.ema(values, 26);
-    const macd = values.map((_, i) => ema12[i] - ema26[i]);
-    const signal = this.ema(macd, 9);
+    // Impulse MACD (LazyBear), length 34 / signal 9.
+    const L = 34;
+    const S = 9;
+    const highs = candles.map(c => c.high);
+    const lows = candles.map(c => c.low);
+    const src = candles.map(c => (c.high + c.low + c.close) / 3); // hlc3
+    const hi = this.smma(highs, L);
+    const lo = this.smma(lows, L);
+    const ema1 = this.ema(src, L);
+    const ema2 = this.ema(ema1, L);
+    const mi = src.map((_, i) => ema1[i] + (ema1[i] - ema2[i])); // zero-lag EMA
+    const md = src.map((_, i) => mi[i] > hi[i] ? mi[i] - hi[i] : (mi[i] < lo[i] ? mi[i] - lo[i] : 0));
+    const sb = this.sma(md, S); // signal
 
-    const macdData: LineData<Time>[] = [];
-    const signalData: LineData<Time>[] = [];
     const histData: HistogramData<Time>[] = [];
-    for (let i = 0; i < this.data.length; i++) {
-      const time = this.data[i].time;
-      macdData.push({ time, value: +macd[i].toFixed(4) });
-      signalData.push({ time, value: +signal[i].toFixed(4) });
-      const hist = macd[i] - signal[i];
-      histData.push({ time, value: +hist.toFixed(4), color: hist >= 0 ? 'rgba(40, 167, 69, 0.6)' : 'rgba(220, 53, 69, 0.6)' });
+    const signalData: LineData<Time>[] = [];
+    for (let i = 0; i < candles.length; i++) {
+      const time = candles[i].time;
+      const color = src[i] > mi[i]
+        ? (src[i] > hi[i] ? '#00c853' : '#2e7d32')  // strong bull / weak bull
+        : (src[i] < lo[i] ? '#d50000' : '#ff9800'); // strong bear / weak bear
+      histData.push({ time, value: +md[i].toFixed(4), color });
+      signalData.push({ time, value: +sb[i].toFixed(4) });
     }
 
     this.macdHistSeries!.setData(histData);
-    this.macdSeries!.setData(macdData);
     this.macdSignalSeries!.setData(signalData);
   }
 
