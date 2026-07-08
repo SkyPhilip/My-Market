@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, from, of, forkJoin } from 'rxjs';
 import { map, tap, mergeMap, toArray, catchError, switchMap } from 'rxjs/operators';
-import { FmpAnalystEstimate, FmpPeer, FmpProfile, FmpProfileSlim, FmpRatiosTtm, FmpSectorPerformance, HighYieldStock } from '../models/fmp.models';
+import { FmpAnalystEstimate, FmpPeer, FmpProfile, FmpRatiosTtm, FmpScreenerResult, FmpSectorPerformance, HighYieldStock } from '../models/fmp.models';
 import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -29,7 +29,6 @@ export class FmpService {
   #companyNameCache = new Map<string, string>();
   #etfOrFundCache = new Map<string, boolean>();
   #dividendCache = new Map<string, number>();
-  #profileCache = new Map<string, FmpProfileSlim>();
   #profileFetched = new Set<string>();
   #pegyCache = new Map<string, number | null>();
   #peersCache = new Map<string, string | null>();
@@ -38,16 +37,8 @@ export class FmpService {
     this.#loadCacheFromStorage();
   }
 
-  getProfiles(symbols: string[]): Observable<FmpProfileSlim[]> {
-    const requested = [...new Set(symbols.map(s => s.trim().toUpperCase()).filter(Boolean))];
-    const uncached = requested.filter(s => !this.#profileCache.has(s));
-
-    // Everything already cached (this session or persisted) — serve without hitting the network.
-    if (!uncached.length) {
-      return of(requested.map(s => this.#profileCache.get(s)).filter((p): p is FmpProfileSlim => !!p));
-    }
-
-    return from(uncached).pipe(
+  getProfiles(symbols: string[]): Observable<FmpProfile[]> {
+    return from(symbols).pipe(
       mergeMap(symbol =>
         this.http.get<FmpProfile[]>(`${this.#baseUrl}/profile`, {
           params: { symbol, apikey: this.#apiKey }
@@ -61,7 +52,6 @@ export class FmpService {
       map(profiles => profiles.filter((p): p is FmpProfile => !!p)),
       tap(profiles => {
         for (const p of profiles) {
-          this.#profileCache.set(p.symbol.toUpperCase(), this.#slimProfile(p));
           this.#sectorCache.set(p.symbol, p.sector || '—');
           this.#companyNameCache.set(p.symbol, p.companyName || p.symbol);
           this.#etfOrFundCache.set(p.symbol, Boolean(p.isEtf || p.isFund));
@@ -71,22 +61,8 @@ export class FmpService {
           }
         }
         this.#saveCacheToStorage();
-      }),
-      // Return the full requested set (newly fetched + previously cached).
-      map(() => requested.map(s => this.#profileCache.get(s)).filter((p): p is FmpProfileSlim => !!p))
+      })
     );
-  }
-
-  #slimProfile(p: FmpProfile): FmpProfileSlim {
-    return {
-      symbol: p.symbol,
-      companyName: p.companyName,
-      sector: p.sector,
-      price: p.price,
-      lastDividend: p.lastDividend,
-      isEtf: p.isEtf,
-      isFund: p.isFund,
-    };
   }
 
   getClosestPeer(symbol: string): Observable<string | null> {
@@ -177,23 +153,34 @@ export class FmpService {
     );
   }
 
-  /** Ranks dividend-paying stocks (ETFs/funds excluded) by trailing yield for the given symbols.
-   *  Uses the free per-symbol /profile endpoint — the /company-screener endpoint is plan-restricted (HTTP 402). */
-  getHighYieldStocks(symbols: string[]): Observable<HighYieldStock[]> {
-    return this.getProfiles(symbols).pipe(
-      map(profiles => {
+  getTopBySector(sector: string, limit = 30): Observable<FmpScreenerResult[]> {
+    return this.http.get<FmpScreenerResult[]>(`${this.#baseUrl}/company-screener`, {
+      params: { sector, limit: limit.toString(), apikey: this.#apiKey }
+    });
+  }
+
+  /** Ranks dividend-paying stocks (ETFs/funds excluded) by yield across the given sectors. */
+  getHighYieldStocks(sectors: string[], perSector = 30): Observable<HighYieldStock[]> {
+    return forkJoin(
+      sectors.map(sector =>
+        this.getTopBySector(sector, perSector).pipe(catchError(() => of<FmpScreenerResult[]>([])))
+      )
+    ).pipe(
+      map(lists => {
         const rows: HighYieldStock[] = [];
-        for (const p of profiles) {
-          if (p.isEtf || p.isFund) continue;
-          if (!(p.price > 0) || !(typeof p.lastDividend === 'number' && p.lastDividend > 0)) continue;
-          rows.push({
-            symbol: p.symbol,
-            companyName: p.companyName || p.symbol,
-            sector: p.sector || '—',
-            price: p.price,
-            annualDividend: p.lastDividend,
-            yieldPct: +((p.lastDividend / p.price) * 100).toFixed(2),
-          });
+        for (const list of lists) {
+          for (const r of list) {
+            if (r.isEtf || r.isFund) continue;
+            if (!(r.price > 0) || !(r.lastAnnualDividend > 0)) continue;
+            rows.push({
+              symbol: r.symbol,
+              companyName: r.companyName || r.symbol,
+              sector: r.sector || '—',
+              price: r.price,
+              annualDividend: r.lastAnnualDividend,
+              yieldPct: +((r.lastAnnualDividend / r.price) * 100).toFixed(2),
+            });
+          }
         }
         return rows.sort((a, b) => b.yieldPct - a.yieldPct);
       })
@@ -320,12 +307,6 @@ export class FmpService {
         this.#dividendCache = new Map(entries);
       }
 
-      const profileStored = sessionStorage.getItem('fmp_profile_cache');
-      if (profileStored) {
-        const entries: [string, FmpProfileSlim][] = JSON.parse(profileStored);
-        this.#profileCache = new Map(entries);
-      }
-
       const fetchedStored = sessionStorage.getItem('fmp_profile_fetched');
       if (fetchedStored) {
         const entries: string[] = JSON.parse(fetchedStored);
@@ -347,7 +328,6 @@ export class FmpService {
     sessionStorage.setItem('fmp_name_cache', JSON.stringify([...this.#companyNameCache.entries()]));
     sessionStorage.setItem('fmp_etf_cache', JSON.stringify([...this.#etfOrFundCache.entries()]));
     sessionStorage.setItem('fmp_div_cache', JSON.stringify([...this.#dividendCache.entries()]));
-    sessionStorage.setItem('fmp_profile_cache', JSON.stringify([...this.#profileCache.entries()]));
     sessionStorage.setItem('fmp_profile_fetched', JSON.stringify([...this.#profileFetched]));
     sessionStorage.setItem('fmp_peers_cache', JSON.stringify([...this.#peersCache.entries()]));
   }
@@ -357,7 +337,6 @@ export class FmpService {
     this.#companyNameCache.clear();
     this.#etfOrFundCache.clear();
     this.#dividendCache.clear();
-    this.#profileCache.clear();
     this.#profileFetched.clear();
     this.#pegyCache.clear();
     this.#peersCache.clear();
@@ -365,7 +344,6 @@ export class FmpService {
     sessionStorage.removeItem('fmp_name_cache');
     sessionStorage.removeItem('fmp_etf_cache');
     sessionStorage.removeItem('fmp_div_cache');
-    sessionStorage.removeItem('fmp_profile_cache');
     sessionStorage.removeItem('fmp_profile_fetched');
     sessionStorage.removeItem('fmp_peers_cache');
   }
