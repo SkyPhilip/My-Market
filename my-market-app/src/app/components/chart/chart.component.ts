@@ -1,5 +1,21 @@
 import { Component, ElementRef, Input, OnChanges, OnDestroy, SimpleChanges, ViewChild, AfterViewInit } from '@angular/core';
-import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries, HistogramSeries, HistogramData, CandlestickSeries, CandlestickData, MouseEventParams } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries, HistogramSeries, HistogramData, CandlestickSeries, CandlestickData, MouseEventParams, createSeriesMarkers, ISeriesMarkersPluginApi, SeriesMarker, LineStyle } from 'lightweight-charts';
+
+export type DivergenceType = 'regBull' | 'hidBull' | 'regBear' | 'hidBear';
+
+const DIVERGENCE_LABELS: Record<DivergenceType, string> = {
+  regBull: 'Reg Bull',
+  hidBull: 'Hid Bull',
+  regBear: 'Reg Bear',
+  hidBear: 'Hid Bear',
+};
+
+const DIVERGENCE_COLORS: Record<DivergenceType, string> = {
+  regBull: '#00c853',
+  hidBull: '#69f0ae',
+  regBear: '#d50000',
+  hidBear: '#ff9800',
+};
 
 /**
  * lightweight-charts v5 series primitive that shades the pane background from the left
@@ -209,6 +225,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() fillHeight = false;
   @Input() candleData: CandlestickData<Time>[] = [];
   @Input() showCandles = false;
+  @Input() divergenceTypes: DivergenceType[] = [];
 
   private chart: IChartApi | null = null;
   private series: ISeriesApi<'Line'> | null = null;
@@ -229,6 +246,9 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   private macdSignalSeries: ISeriesApi<'Line'> | null = null;
   private macdHistSeries: ISeriesApi<'Histogram'> | null = null;
   private sessionShade: SessionShadePrimitive | null = null;
+  private divergenceMarkers: ISeriesMarkersPluginApi<Time> | null = null;
+  private divergencePaneMarkers: ISeriesMarkersPluginApi<Time> | null = null;
+  private divergenceLines: ISeriesApi<'Line'>[] = [];
   @ViewChild('volumeProfile') volumeProfile!: ElementRef<HTMLDivElement>;
 
   ngAfterViewInit(): void {
@@ -273,6 +293,9 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     }
     if ((changes['showMacd'] || changes['data'] || changes['candleData']) && this.chart) {
       this.updateMacd();
+    }
+    if ((changes['divergenceTypes'] || changes['data'] || changes['candleData'] || changes['showCandles'] || changes['showMacd']) && this.chart) {
+      this.updateDivergences();
     }
   }
 
@@ -471,6 +494,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.updateMovingAverage200Series();
     this.updatePeerSeries();
     this.updateMacd();
+    this.updateDivergences();
 
     if (this.volumeData.length) {
       this.volumeSeries.setData(this.volumeData);
@@ -747,6 +771,190 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.macdSeries = null;
     this.macdSignalSeries = null;
     this.macdHistSeries = null;
+  }
+
+  /** Non-clipping Impulse-MACD momentum used for divergence: zero-lag line vs channel midline. */
+  private computeOsc(candles: CandlestickData<Time>[]): number[] {
+    const L = 34;
+    const highs = candles.map(c => c.high);
+    const lows = candles.map(c => c.low);
+    const src = candles.map(c => (c.high + c.low + c.close) / 3);
+    const hi = this.smma(highs, L);
+    const lo = this.smma(lows, L);
+    const ema1 = this.ema(src, L);
+    const ema2 = this.ema(ema1, L);
+    return src.map((_, i) => (ema1[i] + (ema1[i] - ema2[i])) - (hi[i] + lo[i]) / 2);
+  }
+
+  /** Fractal pivot indices: a low/high that is the strict extreme within `lookback` bars each side. */
+  private pivotIndices(values: number[], lookback: number, kind: 'low' | 'high'): number[] {
+    const out: number[] = [];
+    for (let i = lookback; i < values.length - lookback; i++) {
+      let pivot = true;
+      for (let j = i - lookback; j <= i + lookback; j++) {
+        if (j === i) continue;
+        if (kind === 'low' ? values[j] <= values[i] : values[j] >= values[i]) { pivot = false; break; }
+      }
+      if (pivot) out.push(i);
+    }
+    return out;
+  }
+
+  /** Detects the enabled divergence types between price swings and the Impulse-MACD
+   *  momentum, then draws connecting lines + markers for the most recent matches. */
+  private updateDivergences(): void {
+    if (!this.chart) return;
+    this.clearDivergences();
+
+    const candles = this.candleData;
+    const LB = 5;
+    if (!this.divergenceTypes.length || candles.length < LB * 2 + 4) return;
+
+    const activeSeries = this.showCandles ? this.candleSeries : this.series;
+    if (!activeSeries) return;
+
+    const lows = candles.map(c => c.low);
+    const highs = candles.map(c => c.high);
+    const osc = this.computeOsc(candles);
+    const want = new Set(this.divergenceTypes);
+
+    const detections: { type: DivergenceType; fromIdx: number; toIdx: number; fromVal: number; toVal: number }[] = [];
+
+    const lowPivots = this.pivotIndices(lows, LB, 'low');
+    for (let k = 1; k < lowPivots.length; k++) {
+      const a = lowPivots[k - 1];
+      const b = lowPivots[k];
+      if (want.has('regBull') && lows[b] < lows[a] && osc[b] > osc[a])
+        detections.push({ type: 'regBull', fromIdx: a, toIdx: b, fromVal: lows[a], toVal: lows[b] });
+      if (want.has('hidBull') && lows[b] > lows[a] && osc[b] < osc[a])
+        detections.push({ type: 'hidBull', fromIdx: a, toIdx: b, fromVal: lows[a], toVal: lows[b] });
+    }
+
+    const highPivots = this.pivotIndices(highs, LB, 'high');
+    for (let k = 1; k < highPivots.length; k++) {
+      const a = highPivots[k - 1];
+      const b = highPivots[k];
+      if (want.has('regBear') && highs[b] > highs[a] && osc[b] < osc[a])
+        detections.push({ type: 'regBear', fromIdx: a, toIdx: b, fromVal: highs[a], toVal: highs[b] });
+      if (want.has('hidBear') && highs[b] < highs[a] && osc[b] > osc[a])
+        detections.push({ type: 'hidBear', fromIdx: a, toIdx: b, fromVal: highs[a], toVal: highs[b] });
+    }
+
+    detections.sort((x, y) => x.toIdx - y.toIdx);
+    // Keep the most recent matches PER TYPE so common types (e.g. hidden) don't
+    // crowd out rarer ones (e.g. regular reversals) under a single global cap.
+    const PER_TYPE = 5;
+    const counts: Record<DivergenceType, number> = { regBull: 0, hidBull: 0, regBear: 0, hidBear: 0 };
+    const recent: typeof detections = [];
+    for (let i = detections.length - 1; i >= 0; i--) {
+      const d = detections[i];
+      if (counts[d.type] < PER_TYPE) {
+        counts[d.type]++;
+        recent.push(d);
+      }
+    }
+    recent.reverse(); // restore ascending toIdx (markers must be time-ascending)
+    if (!recent.length) return;
+
+    for (const d of recent) {
+      const dashed = d.type === 'hidBull' || d.type === 'hidBear';
+      const line = this.chart.addSeries(LineSeries, {
+        color: DIVERGENCE_COLORS[d.type],
+        lineWidth: 1,
+        lineStyle: dashed ? LineStyle.Dashed : LineStyle.Solid,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      line.setData([
+        { time: candles[d.fromIdx].time, value: +d.fromVal.toFixed(4) },
+        { time: candles[d.toIdx].time, value: +d.toVal.toFixed(4) },
+      ]);
+      this.divergenceLines.push(line);
+    }
+
+    const markers: SeriesMarker<Time>[] = [];
+    for (const d of recent) {
+      const bull = d.type === 'regBull' || d.type === 'hidBull';
+      markers.push({
+        time: candles[d.toIdx].time,
+        position: bull ? 'belowBar' : 'aboveBar',
+        color: DIVERGENCE_COLORS[d.type],
+        shape: bull ? 'arrowUp' : 'arrowDown',
+        text: DIVERGENCE_LABELS[d.type],
+      });
+    }
+    this.divergenceMarkers = createSeriesMarkers(activeSeries, markers);
+
+    // Mirror onto the iMACD pane (only when it is shown): plot the momentum line the
+    // divergence is measured on, plus matching connectors + markers on it.
+    if (this.showMacd && this.macdHistSeries) {
+      const oscLine = this.chart.addSeries(LineSeries, {
+        color: 'rgba(160, 170, 205, 0.5)',
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      }, 1);
+      oscLine.setData(osc.map((v, i) => ({ time: candles[i].time, value: +v.toFixed(4) })));
+      this.divergenceLines.push(oscLine);
+
+      for (const d of recent) {
+        const dashed = d.type === 'hidBull' || d.type === 'hidBear';
+        const seg = this.chart.addSeries(LineSeries, {
+          color: DIVERGENCE_COLORS[d.type],
+          lineWidth: 1,
+          lineStyle: dashed ? LineStyle.Dashed : LineStyle.Solid,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        }, 1);
+        seg.setData([
+          { time: candles[d.fromIdx].time, value: +osc[d.fromIdx].toFixed(4) },
+          { time: candles[d.toIdx].time, value: +osc[d.toIdx].toFixed(4) },
+        ]);
+        this.divergenceLines.push(seg);
+      }
+
+      // Anchor pane markers to a hidden zero baseline so bull arrows sit below the
+      // zero line (clear of the histogram) and bear arrows sit above it.
+      const zeroLine = this.chart.addSeries(LineSeries, {
+        color: 'rgba(0, 0, 0, 0)',
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      }, 1);
+      zeroLine.setData(candles.map(c => ({ time: c.time, value: 0 })));
+      this.divergenceLines.push(zeroLine);
+
+      const paneMarkers: SeriesMarker<Time>[] = [];
+      for (const d of recent) {
+        const bull = d.type === 'regBull' || d.type === 'hidBull';
+        paneMarkers.push({
+          time: candles[d.toIdx].time,
+          position: bull ? 'belowBar' : 'aboveBar',
+          color: DIVERGENCE_COLORS[d.type],
+          shape: bull ? 'arrowUp' : 'arrowDown',
+        });
+      }
+      this.divergencePaneMarkers = createSeriesMarkers(zeroLine, paneMarkers);
+    }
+  }
+
+  private clearDivergences(): void {
+    if (this.divergenceMarkers) {
+      this.divergenceMarkers.detach();
+      this.divergenceMarkers = null;
+    }
+    if (this.divergencePaneMarkers) {
+      this.divergencePaneMarkers.detach();
+      this.divergencePaneMarkers = null;
+    }
+    if (this.chart) {
+      for (const line of this.divergenceLines) this.chart.removeSeries(line);
+    }
+    this.divergenceLines = [];
   }
 
   private renderVolumeProfile(): void {

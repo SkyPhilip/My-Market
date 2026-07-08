@@ -8,7 +8,7 @@ import { FinnhubService } from '../../services/finnhub.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaErrorBody, AlpacaBarsResponse, AlpacaSnapshotsResponse, AlpacaSnapshot } from '../../models/alpaca.models';
 import { FinnhubNewsArticle, FinnhubMetrics, FinnhubRecommendation, FinnhubEarningsDate, FinnhubEarningsSurprise } from '../../models/finnhub.models';
-import { ChartComponent } from '../chart/chart.component';
+import { ChartComponent, DivergenceType } from '../chart/chart.component';
 import { NotificationService } from '../../services/notification.service';
 import { WatchlistService } from '../../services/watchlist.service';
 import { LineData, CandlestickData, Time } from 'lightweight-charts';
@@ -400,6 +400,34 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                             (click)="toggleMacd(row.symbol)"
                             title="Show or hide Impulse MACD (34/9) in a lower pane — flat inside the channel, impulses on momentum breakouts"
                           >iMACD</button>
+                          <button
+                            type="button"
+                            class="range-btn div-btn div-bull"
+                            [class.active]="hasDivergence(row.symbol, 'regBull')"
+                            (click)="toggleDivergence(row.symbol, 'regBull')"
+                            title="Regular bullish divergence: price lower low + momentum higher low — possible reversal up"
+                          >Reg▲</button>
+                          <button
+                            type="button"
+                            class="range-btn div-btn div-bull"
+                            [class.active]="hasDivergence(row.symbol, 'hidBull')"
+                            (click)="toggleDivergence(row.symbol, 'hidBull')"
+                            title="Hidden bullish divergence: price higher low + momentum lower low — uptrend likely to continue"
+                          >Hid▲</button>
+                          <button
+                            type="button"
+                            class="range-btn div-btn div-bear"
+                            [class.active]="hasDivergence(row.symbol, 'regBear')"
+                            (click)="toggleDivergence(row.symbol, 'regBear')"
+                            title="Regular bearish divergence: price higher high + momentum lower high — possible reversal down"
+                          >Reg▼</button>
+                          <button
+                            type="button"
+                            class="range-btn div-btn div-bear"
+                            [class.active]="hasDivergence(row.symbol, 'hidBear')"
+                            (click)="toggleDivergence(row.symbol, 'hidBear')"
+                            title="Hidden bearish divergence: price lower high + momentum higher high — downtrend likely to continue"
+                          >Hid▼</button>
                           @if (isEtf(row.symbol)) {
                             <span class="etf-badge" title="ETF/Fund — no comparable peer">ETF</span>
                           } @else {
@@ -532,6 +560,7 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                           [peerData]="row.peerData"
                           [showPeer]="peerSymbols().has(row.symbol)"
                           [showMacd]="macdSymbols().has(row.symbol)"
+                          [divergenceTypes]="divergencesFor(row.symbol)"
                           [fillHeight]="fullscreenSymbol() === row.symbol"
                         ></app-chart>
                       </div>
@@ -810,6 +839,36 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       background: #4a9eff;
       color: #fff;
       border-color: #4a9eff;
+    }
+    .range-btn.div-btn {
+      padding: 6px 8px;
+      font-size: 12px;
+    }
+    .range-btn.div-btn.div-bull {
+      border-color: rgba(0, 200, 83, 0.5);
+      color: #00c853;
+    }
+    .range-btn.div-btn.div-bull:hover {
+      border-color: #00c853;
+      color: #4be08a;
+    }
+    .range-btn.div-btn.div-bull.active {
+      background: #00c853;
+      border-color: #00c853;
+      color: #06231a;
+    }
+    .range-btn.div-btn.div-bear {
+      border-color: rgba(213, 0, 0, 0.5);
+      color: #ff6b6b;
+    }
+    .range-btn.div-btn.div-bear:hover {
+      border-color: #d50000;
+      color: #ff9a9a;
+    }
+    .range-btn.div-btn.div-bear.active {
+      background: #d50000;
+      border-color: #d50000;
+      color: #fff;
     }
     .range-btn.ma50-btn {
       border-color: rgba(240, 192, 64, 0.55);
@@ -1155,6 +1214,8 @@ export class WatchlistComponent implements OnInit {
   expandedSymbols = signal<Set<string>>(new Set());
   peerSymbols = signal<Set<string>>(new Set());
   macdSymbols = signal<Set<string>>(new Set());
+  divergenceMap = signal<Map<string, DivergenceType[]>>(new Map());
+  private readonly EMPTY_DIV: DivergenceType[] = [];
   fullscreenSymbol = signal<string | null>(null);
   readonly timeRanges: TimeRange[] = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'All'];
   openingRangeSymbols = signal<Set<string>>(new Set());
@@ -1690,6 +1751,24 @@ export class WatchlistComponent implements OnInit {
     this.macdSymbols.update(s => {
       const next = new Set(s);
       if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
+      return next;
+    });
+  }
+
+  divergencesFor(symbol: string): DivergenceType[] {
+    return this.divergenceMap().get(symbol) ?? this.EMPTY_DIV;
+  }
+
+  hasDivergence(symbol: string, type: DivergenceType): boolean {
+    return this.divergencesFor(symbol).includes(type);
+  }
+
+  toggleDivergence(symbol: string, type: DivergenceType): void {
+    this.divergenceMap.update(m => {
+      const next = new Map(m);
+      const cur = new Set(next.get(symbol) ?? []);
+      if (cur.has(type)) cur.delete(type); else cur.add(type);
+      if (cur.size) next.set(symbol, [...cur]); else next.delete(symbol);
       return next;
     });
   }
