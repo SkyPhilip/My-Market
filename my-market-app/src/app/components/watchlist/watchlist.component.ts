@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, signal, inject, input, effect, HostListener, WritableSignal } from '@angular/core';
+import { Component, OnInit, OnDestroy, computed, signal, inject, input, effect, HostListener, WritableSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -447,6 +447,15 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                             [attr.aria-label]="'View news for ' + row.symbol"
                             title="View news"
                           >📰 News</button>
+                          @if (row.range === '1D') {
+                            <button
+                              type="button"
+                              class="range-btn poll-btn"
+                              [class.active]="pollSymbols().has(row.symbol)"
+                              (click)="togglePoll(row.symbol)"
+                              title="Auto-refresh this 1D chart every 30s while the market is open"
+                            >⟳ Poll</button>
+                          }
                           <button
                             type="button"
                             class="range-btn fullscreen-btn"
@@ -998,6 +1007,19 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
       border-color: #f0c040;
       color: #f6d16d;
     }
+    .chart-toolbar .poll-btn {
+      border-color: rgba(40, 167, 69, 0.55);
+      color: #46c76a;
+    }
+    .chart-toolbar .poll-btn:hover {
+      border-color: #28a745;
+      color: #6bd98a;
+    }
+    .chart-toolbar .poll-btn.active {
+      background: #28a745;
+      border-color: #28a745;
+      color: #fff;
+    }
     .chart-toolbar .fullscreen-btn {
       border-color: rgba(74, 158, 255, 0.55);
       color: #4a9eff;
@@ -1155,7 +1177,10 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
     }
   `]
 })
-export class WatchlistComponent implements OnInit {
+export class WatchlistComponent implements OnInit, OnDestroy {
+  private static readonly POLL_MS = 30_000;
+  private pollInterval: ReturnType<typeof setInterval> | null = null;
+  private lastVisibleRefresh = 0;
   private alpacaService = inject(AlpacaService);
   private fmpService = inject(FmpService);
   private finnhubService = inject(FinnhubService);
@@ -1214,6 +1239,7 @@ export class WatchlistComponent implements OnInit {
   expandedSymbols = signal<Set<string>>(new Set());
   peerSymbols = signal<Set<string>>(new Set());
   macdSymbols = signal<Set<string>>(new Set());
+  pollSymbols = signal<Set<string>>(new Set());
   divergenceMap = signal<Map<string, DivergenceType[]>>(new Map());
   private readonly EMPTY_DIV: DivergenceType[] = [];
   fullscreenSymbol = signal<string | null>(null);
@@ -1265,6 +1291,14 @@ export class WatchlistComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadWatchlist();
+    this.pollInterval = setInterval(() => this.pollTick(), WatchlistComponent.POLL_MS);
+  }
+
+  ngOnDestroy(): void {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
+    }
   }
 
   formatVolume(v: number | null): string {
@@ -1755,6 +1789,29 @@ export class WatchlistComponent implements OnInit {
     });
   }
 
+  togglePoll(symbol: string): void {
+    this.pollSymbols.update(s => {
+      const next = new Set(s);
+      if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
+      return next;
+    });
+  }
+
+  /** Silently refreshes any polled + expanded 1D charts, but only while the market is open. */
+  private async pollTick(): Promise<void> {
+    const symbols = [...this.pollSymbols()].filter(s => this.expandedSymbols().has(s) && this.rangeFor(s) === '1D');
+    if (!symbols.length) return;
+    try {
+      const clock = await firstValueFrom(this.alpacaService.getClock());
+      if (!clock?.body?.is_open) return;
+    } catch {
+      return;
+    }
+    for (const symbol of symbols) {
+      this.loadChart(symbol, true);
+    }
+  }
+
   divergencesFor(symbol: string): DivergenceType[] {
     return this.divergenceMap().get(symbol) ?? this.EMPTY_DIV;
   }
@@ -1887,6 +1944,18 @@ export class WatchlistComponent implements OnInit {
     if (this.fullscreenSymbol() !== null) this.fullscreenSymbol.set(null);
   }
 
+  /** Refresh polled 1D charts immediately when the tab becomes visible/focused again
+   *  (e.g. after unlocking the screen), instead of waiting for the throttled interval. */
+  @HostListener('document:visibilitychange')
+  @HostListener('window:focus')
+  onBecameActive(): void {
+    if (document.visibilityState !== 'visible') return;
+    const now = Date.now();
+    if (now - this.lastVisibleRefresh < 2000) return; // coalesce visibilitychange + focus
+    this.lastVisibleRefresh = now;
+    this.pollTick();
+  }
+
   toggleOpeningRange(symbol: string): void {
     if (this.rangeFor(symbol) !== '1D') return;
     this.openingRangeSymbols.update(s => {
@@ -2014,10 +2083,12 @@ export class WatchlistComponent implements OnInit {
     return `${years}y ago`;
   }
 
-  private async loadChart(symbol: string): Promise<void> {
-    this.watchlistRows.update(rows => rows.map(r =>
-      r.symbol === symbol ? { ...r, chartLoading: true, chartData: [] } : r
-    ));
+  private async loadChart(symbol: string, silent = false): Promise<void> {
+    if (!silent) {
+      this.watchlistRows.update(rows => rows.map(r =>
+        r.symbol === symbol ? { ...r, chartLoading: true, chartData: [] } : r
+      ));
+    }
 
     const range = this.watchlistRows().find(r => r.symbol === symbol)?.range ?? '1D';
     const config = RANGE_CONFIGS[range];
@@ -2025,9 +2096,13 @@ export class WatchlistComponent implements OnInit {
 
     try {
       const result = await firstValueFrom(
-        this.alpacaService.getBars(symbol, config.timeframe, config.getStart(), undefined, range === '1D' ? 5000 : 1000)
+        this.alpacaService.getBars(symbol, config.timeframe, config.getStart(), undefined, range === '1D' ? 5000 : 1000, range === '1D' ? 'desc' : undefined)
       );
-      const rawBars = result?.body?.bars ?? [];
+      // For 1D we request newest-first (sort=desc) so the latest minute bars are never dropped by
+      // the limit (a very liquid symbol can exceed it); restore ascending order for downstream logic.
+      const rawBars = range === '1D'
+        ? [...(result?.body?.bars ?? [])].reverse()
+        : (result?.body?.bars ?? []);
       // For 1D, keep only the two most recent OPEN sessions (data-driven → skips weekends/holidays).
       let bars = rawBars;
       let currentSessionBars = rawBars;
