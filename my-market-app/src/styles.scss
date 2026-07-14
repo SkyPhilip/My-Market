@@ -222,6 +222,44 @@ app-watchlist .news-item__source {
   font-size: 11px;
 }
 
+app-watchlist .news-item__paywall {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid rgba(240, 192, 64, 0.5);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: #f0c040;
+  background: rgba(240, 192, 64, 0.1);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+app-watchlist .news-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #a0a0b0;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+app-watchlist .news-filter input {
+  accent-color: #4a9eff;
+  cursor: pointer;
+}
+
+app-watchlist .news-panel__link-btn {
+  background: transparent;
+  border: none;
+  color: #4a9eff;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
 app-watchlist .news-item__age {
   color: #8892b0;
   font-size: 12px;

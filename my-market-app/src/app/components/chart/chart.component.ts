@@ -217,6 +217,8 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() showOpeningRange = false;
   @Input() openingRangeHigh: number | null = null;
   @Input() openingRangeLow: number | null = null;
+  @Input() showCostBasis = false;
+  @Input() costBasis: number | null = null;
   @Input() peerData: LineData<Time>[] = [];
   @Input() showPeer = false;
   @Input() showSessionShade = false;
@@ -241,6 +243,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   private swingLowSeries: ISeriesApi<'Line'> | null = null;
   private orHighSeries: ISeriesApi<'Line'> | null = null;
   private orLowSeries: ISeriesApi<'Line'> | null = null;
+  private costBasisSeries: ISeriesApi<'Line'> | null = null;
   private peerSeries: ISeriesApi<'Line'> | null = null;
   private macdSeries: ISeriesApi<'Line'> | null = null;
   private macdSignalSeries: ISeriesApi<'Line'> | null = null;
@@ -287,6 +290,9 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     }
     if ((changes['showOpeningRange'] || changes['openingRangeHigh'] || changes['openingRangeLow'] || changes['data']) && this.chart) {
       this.updateOpeningRangeLines();
+    }
+    if ((changes['showCostBasis'] || changes['costBasis'] || changes['data']) && this.chart) {
+      this.updateCostBasisLine();
     }
     if ((changes['showSessionShade'] || changes['sessionShadeUntil'] || changes['data']) && this.sessionShade) {
       this.sessionShade.setState(this.showSessionShade && this.data.length > 0, this.sessionShadeUntil);
@@ -484,9 +490,21 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       crosshairMarkerVisible: false,
     });
 
+    this.costBasisSeries = this.chart.addSeries(LineSeries, {
+      title: 'Cost Basis',
+      color: 'rgba(74, 158, 255, 0.95)',
+      lineWidth: 2,
+      lineStyle: 1,
+      lastValueVisible: true,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    });
+
     this.updateRangeLines();
 
     this.updateOpeningRangeLines();
+
+    this.updateCostBasisLine();
 
     this.updateMovingAverage20Series();
     this.updateMovingAverageSeries();
@@ -616,6 +634,18 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     const lowData: LineData<Time>[] = this.data.map(point => ({ time: point.time, value: this.openingRangeLow! }));
     this.orHighSeries.setData(highData);
     this.orLowSeries.setData(lowData);
+  }
+
+  private updateCostBasisLine(): void {
+    if (!this.costBasisSeries) return;
+
+    if (!this.showCostBasis || this.costBasis === null || this.data.length < 2) {
+      this.costBasisSeries.setData([]);
+      return;
+    }
+
+    const costData: LineData<Time>[] = this.data.map(point => ({ time: point.time, value: this.costBasis! }));
+    this.costBasisSeries.setData(costData);
   }
 
   private updateMovingAverage20Series(): void {

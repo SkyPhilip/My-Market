@@ -116,6 +116,30 @@ const RANGE_CONFIGS: Record<TimeRange, RangeConfig> = {
   'All': { timeframe: '1Month', getStart: () => '2000-01-01' },
 };
 
+/** Publishers that typically gate full articles behind a paid subscription. Matched case-insensitively as substrings of Finnhub's `source`. */
+const PAYWALLED_SOURCES = [
+  'seeking alpha',
+  'seekingalpha',
+  'bloomberg',
+  'wall street journal',
+  'wsj',
+  'barron',
+  'financial times',
+  'the economist',
+  'new york times',
+  'nytimes',
+  'business insider',
+  'the information',
+  'morningstar',
+];
+
+/** True when a news article's source is a known subscription-gated publisher. */
+function isPaywalledSource(source: string | null | undefined): boolean {
+  if (!source) return false;
+  const s = source.toLowerCase();
+  return PAYWALLED_SOURCES.some(p => s.includes(p));
+}
+
 interface WatchlistRow {
   symbol: string;
   name: string;
@@ -364,6 +388,15 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                             (click)="toggleMovingAverage200(row.symbol)"
                             title="Show or hide the 200-period moving average (window scales with the selected timeframe)"
                           >200MA</button>
+                          @if (isCurrentHoldings() && row.costBasis !== null) {
+                            <button
+                              type="button"
+                              class="range-btn cost-basis-btn"
+                              [class.active]="costBasisSymbols().has(row.symbol)"
+                              (click)="toggleCostBasis(row.symbol)"
+                              [title]="'Show or hide your cost basis ($' + (row.costBasis | number:'1.2-2') + '/share) as a line on the chart'"
+                            >Cost Basis</button>
+                          }
                           @if (row.range === '5D') {
                             <button
                               type="button"
@@ -564,6 +597,8 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
                           [showOpeningRange]="openingRangeSymbols().has(row.symbol) && row.range === '1D'"
                           [openingRangeHigh]="openingRangeHighFor(row)"
                           [openingRangeLow]="openingRangeLowFor(row)"
+                          [showCostBasis]="costBasisSymbols().has(row.symbol)"
+                          [costBasis]="row.costBasis"
                           [showSessionShade]="row.range === '1D'"
                           [sessionShadeUntil]="row.sessionShadeUntil"
                           [peerData]="row.peerData"
@@ -616,32 +651,52 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
               } @else if (newsLoadError()) {
                 <p class="news-panel__state news-panel__state--error">{{ newsLoadError() }}</p>
               } @else if (newsArticles().length) {
-                @for (article of newsArticles(); track article.url) {
-                  <article class="news-item">
-                    @if (article.image) {
-                      <img class="news-item__image" [src]="article.image" [alt]="article.headline" loading="lazy" />
-                    }
-                    <div class="news-item__body">
-                      <a
-                        class="news-item__headline"
-                        [href]="article.url"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >{{ article.headline }}</a>
-                      <p class="news-item__summary">{{ article.summary || 'No summary available.' }}</p>
-                      <div class="news-item__meta-row">
-                        <span class="news-item__source">{{ article.source }}</span>
-                        <span class="news-item__age">{{ relativeTime(article.datetime) }}</span>
+                @if (paywalledNewsCount() > 0) {
+                  <label class="news-filter">
+                    <input
+                      type="checkbox"
+                      [checked]="hidePaywalledNews()"
+                      (change)="toggleHidePaywalled()"
+                    />
+                    <span>Hide subscription-only sources ({{ paywalledNewsCount() }})</span>
+                  </label>
+                }
+                @if (visibleNewsArticles().length) {
+                  @for (article of visibleNewsArticles(); track article.url) {
+                    <article class="news-item">
+                      @if (article.image) {
+                        <img class="news-item__image" [src]="article.image" [alt]="article.headline" loading="lazy" />
+                      }
+                      <div class="news-item__body">
                         <a
-                          class="news-item__open"
+                          class="news-item__headline"
                           [href]="article.url"
                           target="_blank"
                           rel="noopener noreferrer"
-                          [attr.aria-label]="'Open story for ' + article.headline"
-                        >Open ↗</a>
+                        >{{ article.headline }}</a>
+                        <p class="news-item__summary">{{ article.summary || 'No summary available.' }}</p>
+                        <div class="news-item__meta-row">
+                          <span class="news-item__source">{{ article.source }}</span>
+                          @if (isPaywalledArticle(article)) {
+                            <span
+                              class="news-item__paywall"
+                              title="This publisher usually requires a paid subscription to read the full article"
+                            >🔒 Subscription</span>
+                          }
+                          <span class="news-item__age">{{ relativeTime(article.datetime) }}</span>
+                          <a
+                            class="news-item__open"
+                            [href]="article.url"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            [attr.aria-label]="'Open story for ' + article.headline"
+                          >Open ↗</a>
+                        </div>
                       </div>
-                    </div>
-                  </article>
+                    </article>
+                  }
+                } @else {
+                  <p class="news-panel__state">All recent items are subscription-only. <button type="button" class="news-panel__link-btn" (click)="toggleHidePaywalled()">Show them</button></p>
                 }
               } @else {
                 <p class="news-panel__state">No recent news found for {{ newsSymbol() }}.</p>
@@ -929,6 +984,19 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
     .range-btn.ma200-btn.active {
       background: #ec407a;
       border-color: #ec407a;
+      color: #fff;
+    }
+    .range-btn.cost-basis-btn {
+      border-color: rgba(74, 158, 255, 0.55);
+      color: #4a9eff;
+    }
+    .range-btn.cost-basis-btn:hover {
+      border-color: #4a9eff;
+      color: #7bb8ff;
+    }
+    .range-btn.cost-basis-btn.active {
+      background: #4a9eff;
+      border-color: #4a9eff;
       color: #fff;
     }
     .clickable-row {
@@ -1246,6 +1314,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   readonly timeRanges: TimeRange[] = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'All'];
   openingRangeSymbols = signal<Set<string>>(new Set());
   openingRangeNarrowSymbols = signal<Set<string>>(new Set());
+  costBasisSymbols = signal<Set<string>>(new Set());
   readonly newsPanelOpen = signal(false);
   readonly newsSymbol = signal<string>('');
   readonly newsArticles = signal<FinnhubNewsArticle[]>([]);
@@ -1253,6 +1322,20 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   readonly newsLoadError = signal<string | null>(null);
 
   private newsRequestSeq = 0;
+
+  readonly hidePaywalledNews = signal(true);
+
+  /** Count of loaded articles whose publisher is subscription-gated. */
+  readonly paywalledNewsCount = computed(() =>
+    this.newsArticles().filter(a => isPaywalledSource(a.source)).length
+  );
+
+  /** Articles shown in the panel, optionally excluding subscription-only sources. */
+  readonly visibleNewsArticles = computed(() =>
+    this.hidePaywalledNews()
+      ? this.newsArticles().filter(a => !isPaywalledSource(a.source))
+      : this.newsArticles()
+  );
 
   sortedWatchlistRows = computed(() => {
     const rows = this.watchlistRows();
@@ -2017,6 +2100,14 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     this.patchRow(symbol, { showMovingAverage200: !row.showMovingAverage200 });
   }
 
+  toggleCostBasis(symbol: string): void {
+    this.costBasisSymbols.update(s => {
+      const next = new Set(s);
+      if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
+      return next;
+    });
+  }
+
   async openNews(symbol: string): Promise<void> {
     const normalizedSymbol = symbol.trim().toUpperCase();
     if (!normalizedSymbol) return;
@@ -2051,6 +2142,15 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     this.newsSymbol.set('');
     this.newsArticles.set([]);
     this.newsLoadError.set(null);
+  }
+
+  /** True when an article's publisher usually requires a paid subscription. */
+  isPaywalledArticle(article: FinnhubNewsArticle): boolean {
+    return isPaywalledSource(article.source);
+  }
+
+  toggleHidePaywalled(): void {
+    this.hidePaywalledNews.update(v => !v);
   }
 
   newsPanelTitleId(): string {
