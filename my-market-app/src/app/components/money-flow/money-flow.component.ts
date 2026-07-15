@@ -68,6 +68,7 @@ const SECTOR_COLORS = [
             @for (m of moversGainers(); track m.symbol) {
               <div class="mover">
                 <span class="mover__sym">{{ m.symbol }}</span>
+                <span class="mover__name" [title]="holdingName(m.symbol)">{{ holdingName(m.symbol) }}</span>
                 <span class="mover__price">{{ '$' + (m.price | number:'1.2-2') }}</span>
                 <span class="mover__pct positive">+{{ m.percent_change | number:'1.2-2' }}%</span>
                 <button
@@ -86,6 +87,7 @@ const SECTOR_COLORS = [
             @for (m of moversLosers(); track m.symbol) {
               <div class="mover">
                 <span class="mover__sym">{{ m.symbol }}</span>
+                <span class="mover__name" [title]="holdingName(m.symbol)">{{ holdingName(m.symbol) }}</span>
                 <span class="mover__price">{{ '$' + (m.price | number:'1.2-2') }}</span>
                 <span class="mover__pct negative">{{ m.percent_change | number:'1.2-2' }}%</span>
                 <button
@@ -206,9 +208,10 @@ const SECTOR_COLORS = [
     .movers-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 8px; }
     .movers-title--up { color: #28a745; }
     .movers-title--down { color: #dc3545; }
-    .mover { display: grid; grid-template-columns: 1fr auto auto 24px; align-items: center; gap: 10px; padding: 4px 0; border-top: 1px solid #1c2a48; }
+    .mover { display: grid; grid-template-columns: auto 1fr auto auto 24px; align-items: center; gap: 10px; padding: 4px 0; border-top: 1px solid #1c2a48; }
     .movers-col .mover:first-of-type { border-top: none; }
     .mover__sym { font-weight: 600; color: #4a9eff; font-size: 13px; }
+    .mover__name { color: #8a8a9a; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .mover__price { color: #a0a0b0; font-size: 12px; }
     .mover__pct { font-size: 13px; font-weight: 600; text-align: right; }
     @media (max-width: 720px) { .movers-card { grid-template-columns: 1fr; } }
@@ -341,6 +344,16 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
       const res = await firstValueFrom(this.alpaca.getMovers(10));
       this.moversGainers.set(res.body?.gainers ?? []);
       this.moversLosers.set(res.body?.losers ?? []);
+      const symbols = [...this.moversGainers(), ...this.moversLosers()].map(m => m.symbol);
+      const uncached = symbols.filter(s => !this.fmp.getCachedCompanyName(s));
+      if (uncached.length) {
+        try {
+          await firstValueFrom(this.fmp.getProfiles(uncached));
+          this.namesVersion.update(v => v + 1);
+        } catch {
+          // Names are non-critical; symbols remain as the fallback display.
+        }
+      }
     } catch {
       // movers are supplementary; ignore failures
     }
