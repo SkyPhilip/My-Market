@@ -12,7 +12,7 @@ interface HighYieldCache {
 }
 
 const CACHE_KEY = 'high_yield_cache';
-const MAX_ROWS = 50;
+const MAX_ROWS = 10;
 
 @Component({
   selector: 'app-high-yield',
@@ -22,8 +22,8 @@ const MAX_ROWS = 50;
     <div class="hy-page">
       <h2>High Yield</h2>
       <p class="subtitle">
-        Highest dividend yields among large-cap stocks across sectors (ETFs/funds excluded).
-        Yield = annual dividend ÷ price. Sourced from the sector screener and cached for the day.
+        Top 10 highest dividend yields among large-cap stocks across sectors (ETFs/funds excluded).
+        Yield = annual dividend ÷ price. Cached for the day.
       </p>
 
       <div class="hy-actions">
@@ -141,8 +141,8 @@ export class HighYieldComponent implements OnInit {
     this.loading.set(true);
     this.error.set(null);
     try {
-      const sectors = Object.keys(SECTOR_SYMBOLS);
-      const all = await firstValueFrom(this.fmp.getHighYieldStocks(sectors));
+      const symbols = Object.values(SECTOR_SYMBOLS).flat();
+      const all = await firstValueFrom(this.fmp.getHighYieldStocks(symbols));
       const rows = all.slice(0, MAX_ROWS);
       this.rows.set(rows);
       this.asOf.set(new Date().toLocaleDateString());

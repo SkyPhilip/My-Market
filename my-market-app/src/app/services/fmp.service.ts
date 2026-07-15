@@ -159,29 +159,47 @@ export class FmpService {
     });
   }
 
-  /** Ranks dividend-paying stocks (ETFs/funds excluded) by yield across the given sectors. */
-  getHighYieldStocks(sectors: string[], perSector = 30): Observable<HighYieldStock[]> {
-    return forkJoin(
-      sectors.map(sector =>
-        this.getTopBySector(sector, perSector).pipe(catchError(() => of<FmpScreenerResult[]>([])))
-      )
-    ).pipe(
-      map(lists => {
+  /** Ranks dividend-paying stocks (ETFs/funds excluded) by yield across a symbol universe.
+   *  Uses the /profile endpoint (available on the base plan) since the company screener is gated. */
+  getHighYieldStocks(symbols: string[]): Observable<HighYieldStock[]> {
+    const universe = [...new Set(symbols.map(s => s.trim().toUpperCase()).filter(Boolean))];
+    if (!universe.length) return of<HighYieldStock[]>([]);
+    return from(universe).pipe(
+      mergeMap(symbol =>
+        this.http.get<FmpProfile[]>(`${this.#baseUrl}/profile`, {
+          params: { symbol, apikey: this.#apiKey }
+        }).pipe(
+          map(arr => arr[0] ?? null),
+          catchError(() => of<FmpProfile | null>(null))
+        ),
+        5 // max 5 concurrent requests
+      ),
+      toArray(),
+      map(profiles => {
         const rows: HighYieldStock[] = [];
-        for (const list of lists) {
-          for (const r of list) {
-            if (r.isEtf || r.isFund) continue;
-            if (!(r.price > 0) || !(r.lastAnnualDividend > 0)) continue;
-            rows.push({
-              symbol: r.symbol,
-              companyName: r.companyName || r.symbol,
-              sector: r.sector || '—',
-              price: r.price,
-              annualDividend: r.lastAnnualDividend,
-              yieldPct: +((r.lastAnnualDividend / r.price) * 100).toFixed(2),
-            });
+        for (const p of profiles) {
+          if (!p) continue;
+          // Keep the shared caches warm, mirroring getProfiles' side effects.
+          this.#sectorCache.set(p.symbol, p.sector || '—');
+          this.#companyNameCache.set(p.symbol, p.companyName || p.symbol);
+          this.#etfOrFundCache.set(p.symbol, Boolean(p.isEtf || p.isFund));
+          this.#profileFetched.add(p.symbol);
+          if (typeof p.lastDividend === 'number' && p.lastDividend > 0) {
+            this.#dividendCache.set(p.symbol, p.lastDividend);
           }
+          if (p.isEtf || p.isFund) continue;
+          const dividend = p.lastDividend ?? 0;
+          if (!(p.price > 0) || !(dividend > 0)) continue;
+          rows.push({
+            symbol: p.symbol,
+            companyName: p.companyName || p.symbol,
+            sector: p.sector || '—',
+            price: p.price,
+            annualDividend: dividend,
+            yieldPct: +((dividend / p.price) * 100).toFixed(2),
+          });
         }
+        this.#saveCacheToStorage();
         return rows.sort((a, b) => b.yieldPct - a.yieldPct);
       })
     );
