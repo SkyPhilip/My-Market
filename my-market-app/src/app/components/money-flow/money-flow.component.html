@@ -12,6 +12,7 @@
             @for (m of moversGainers(); track m.symbol) {
               <div class="mover">
                 <span class="mover__sym">{{ m.symbol }}</span>
+                <span class="mover__name" [title]="holdingName(m.symbol)">{{ holdingName(m.symbol) }}</span>
                 <span class="mover__price">{{ '$' + (m.price | number:'1.2-2') }}</span>
                 <span class="mover__pct positive">+{{ m.percent_change | number:'1.2-2' }}%</span>
                 <button
@@ -30,6 +31,7 @@
             @for (m of moversLosers(); track m.symbol) {
               <div class="mover">
                 <span class="mover__sym">{{ m.symbol }}</span>
+                <span class="mover__name" [title]="holdingName(m.symbol)">{{ holdingName(m.symbol) }}</span>
                 <span class="mover__price">{{ '$' + (m.price | number:'1.2-2') }}</span>
                 <span class="mover__pct negative">{{ m.percent_change | number:'1.2-2' }}%</span>
                 <button

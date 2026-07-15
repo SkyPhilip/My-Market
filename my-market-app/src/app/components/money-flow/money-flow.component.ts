@@ -145,6 +145,16 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
       const res = await firstValueFrom(this.alpaca.getMovers(10));
       this.moversGainers.set(res.body?.gainers ?? []);
       this.moversLosers.set(res.body?.losers ?? []);
+      const symbols = [...this.moversGainers(), ...this.moversLosers()].map(m => m.symbol);
+      const uncached = symbols.filter(s => !this.fmp.getCachedCompanyName(s));
+      if (uncached.length) {
+        try {
+          await firstValueFrom(this.fmp.getProfiles(uncached));
+          this.namesVersion.update(v => v + 1);
+        } catch {
+          // Names are non-critical; symbols remain as the fallback display.
+        }
+      }
     } catch {
       // movers are supplementary; ignore failures
     }

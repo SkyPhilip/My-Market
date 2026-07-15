@@ -5,9 +5,10 @@
     .movers-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 8px; }
     .movers-title--up { color: #28a745; }
     .movers-title--down { color: #dc3545; }
-    .mover { display: grid; grid-template-columns: 1fr auto auto 24px; align-items: center; gap: 10px; padding: 4px 0; border-top: 1px solid #1c2a48; }
+    .mover { display: grid; grid-template-columns: auto 1fr auto auto 24px; align-items: center; gap: 10px; padding: 4px 0; border-top: 1px solid #1c2a48; }
     .movers-col .mover:first-of-type { border-top: none; }
     .mover__sym { font-weight: 600; color: #4a9eff; font-size: 13px; }
+    .mover__name { color: #8a8a9a; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .mover__price { color: #a0a0b0; font-size: 12px; }
     .mover__pct { font-size: 13px; font-weight: 600; text-align: right; }
     @media (max-width: 720px) { .movers-card { grid-template-columns: 1fr; } }
