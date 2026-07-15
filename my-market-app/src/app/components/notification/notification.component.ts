@@ -4,74 +4,8 @@ import { NotificationService } from '../../services/notification.service';
 @Component({
   selector: 'app-notification',
   standalone: true,
-  template: `
-    <div class="notification-container">
-      @for (notification of notificationService.notifications(); track notification.id) {
-        <div class="notification" [class]="'notification--' + notification.type" (click)="dismiss(notification.id)">
-          <span class="notification__message">{{ notification.message }}</span>
-          <button class="notification__close">&times;</button>
-        </div>
-      }
-    </div>
-  `,
-  styles: [`
-    .notification-container {
-      position: fixed;
-      top: 16px;
-      right: 16px;
-      z-index: 10000;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      max-width: 400px;
-      width: min(400px, calc(100vw - 32px));
-    }
-    .notification {
-      padding: 12px 16px;
-      border-radius: 6px;
-      color: #fff;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      max-width: 100%;
-      box-sizing: border-box;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-      animation: slideIn 0.3s ease;
-    }
-    .notification__message {
-      flex: 1;
-      min-width: 0;
-      white-space: normal;
-      overflow-wrap: anywhere;
-      word-break: break-word;
-      line-height: 1.35;
-    }
-    .notification--error {
-      background: #dc3545;
-    }
-    .notification--success {
-      background: #28a745;
-    }
-    .notification--info {
-      background: #17a2b8;
-    }
-    .notification__close {
-      background: none;
-      border: none;
-      color: #fff;
-      font-size: 18px;
-      cursor: pointer;
-      margin-left: 0;
-      flex: 0 0 auto;
-      align-self: flex-start;
-    }
-    @keyframes slideIn {
-      from { transform: translateX(100%); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
-    }
-  `]
+  templateUrl: './notification.component.html',
+  styleUrl: './notification.component.scss',
 })
 export class NotificationComponent {
   protected notificationService = inject(NotificationService);

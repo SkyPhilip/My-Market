@@ -1,0 +1,98 @@
+
+    <div class="dashboard">
+      <h2>Market Overview</h2>
+      <div class="range-selector">
+        @for (range of timeRanges; track range) {
+          <button
+            class="range-btn"
+            [class.active]="selectedRange() === range"
+            (click)="selectRange(range)"
+          >{{ range }}</button>
+        }
+        <button
+          class="range-btn ma50-btn"
+          [class.active]="showMovingAverage()"
+          (click)="toggleMovingAverage()"
+          title="Show or hide the 50-day moving average"
+        >50MA</button>
+        <button
+          class="range-btn ma150-btn"
+          [class.active]="showMovingAverage150()"
+          (click)="toggleMovingAverage150()"
+          title="Show or hide the 150-day moving average"
+        >150MA</button>
+        @if (selectedRange() === '5D') {
+          <button
+            class="range-btn"
+            [class.active]="showRangeLevels()"
+            (click)="toggleRangeLevels()"
+            title="Show previous day range lines on 5D charts"
+          >Range High/Low</button>
+        }
+      </div>
+      @if (summaryState().prefetchOrBusy) {
+        <p class="loading">Loading market data...</p>
+      } @else if (summaryState().errorResOrException) {
+        <p class="loading">Failed to load market data. <button (click)="fetchSummary()">Retry</button></p>
+      }
+      <div class="index-cards">
+        @for (card of indices(); track card.symbol) {
+          <div class="index-card">
+            <div class="index-card__header">
+              <span class="index-card__name">{{ card.name }}</span>
+              <span class="index-card__meta">
+                <span class="index-card__symbol">{{ card.symbol }}</span>
+                <button
+                  type="button"
+                  class="add-index-btn"
+                  [class.added]="inWatchList(card.symbol)"
+                  [disabled]="inWatchList(card.symbol)"
+                  (click)="addToWatchList(card.symbol)"
+                  [title]="inWatchList(card.symbol) ? 'In Watch List' : 'Add to Watch List'"
+                >{{ inWatchList(card.symbol) ? '✓' : '+' }}</button>
+              </span>
+            </div>
+            <div class="index-card__price">
+              @if (card.currentPrice !== null) {
+                <span class="price">{{'$'}}{{ card.currentPrice | number:'1.2-2' }}</span>
+                @if (card.change !== null) {
+                  <span class="change" [class.positive]="card.change >= 0" [class.negative]="card.change < 0">
+                    {{ card.change >= 0 ? '+' : '' }}{{ card.change | number:'1.2-2' }}
+                    ({{ card.changePercent! >= 0 ? '+' : '' }}{{ card.changePercent | number:'1.2-2' }}%)
+                  </span>
+                }
+              } @else if (!summaryState().prefetchOrBusy) {
+                <span class="loading">No data available</span>
+              } @else {
+                <span class="loading">Loading...</span>
+              }
+            </div>
+            <app-chart
+              [data]="card.chartData"
+              [color]="card.color"
+              [maData]="card.maData"
+              [showMovingAverage]="showMovingAverage()"
+              [ma150Data]="card.ma150Data"
+              [showMovingAverage150]="showMovingAverage150()"
+              [volumeData]="card.volumeData"
+              [volumeProfileData]="card.volumeProfileData"
+              [showRangeLines]="showRangeLevels() && selectedRange() === '5D'"
+              [rangeHigh]="card.rangeHigh"
+              [rangeLow]="card.rangeLow"
+              [swingHigh]="card.swingHigh"
+              [swingLow]="card.swingLow"
+            ></app-chart>
+          </div>
+        }
+      </div>
+
+      <app-watchlist
+        title="Current Holdings"
+        watchlistName="Current Holdings"
+      />
+      <app-watchlist
+        title="Watch List"
+        watchlistName="Watch List"
+      />
+    </div>
+  

@@ -1,0 +1,10 @@
+
+    <div class="notification-container">
+      @for (notification of notificationService.notifications(); track notification.id) {
+        <div class="notification" [class]="'notification--' + notification.type" (click)="dismiss(notification.id)">
+          <span class="notification__message">{{ notification.message }}</span>
+          <button class="notification__close">&times;</button>
+        </div>
+      }
+    </div>
+  

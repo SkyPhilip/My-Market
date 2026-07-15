@@ -1,0 +1,54 @@
+
+    <div class="login-container">
+      <div class="login-card">
+        <h1>My Market App</h1>
+        <p class="subtitle">Enter your Alpaca API credentials to continue</p>
+
+        <form (ngSubmit)="onSubmit()" #loginForm="ngForm">
+          <div class="form-group">
+            <label for="keyId">API Key</label>
+            <input
+              id="keyId"
+              type="text"
+              [(ngModel)]="keyId"
+              name="keyId"
+              required
+              placeholder="Your Alpaca API Key"
+              [disabled]="fetchState().prefetchOrBusy && !fetchState().nascent"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="secretKey">API Secret</label>
+            <input
+              id="secretKey"
+              type="password"
+              [(ngModel)]="secretKey"
+              name="secretKey"
+              required
+              placeholder="Your Alpaca Secret Key"
+              [disabled]="fetchState().prefetchOrBusy && !fetchState().nascent"
+            />
+          </div>
+
+          @if (fetchState().errorRes; as errorRes) {
+            <div class="error-message">
+              @if (errorRes.status === 401 || errorRes.status === 403) {
+                Invalid API Key or Secret. Please check your credentials and try again.
+              } @else {
+                Unable to connect. Please try again later.
+              }
+            </div>
+          }
+
+          @if (fetchState().exception) {
+            <div class="error-message">Unable to connect. Please try again later.</div>
+          }
+
+          <button type="submit" [disabled]="(fetchState().prefetchOrBusy && !fetchState().nascent) || !keyId || !secretKey">
+            {{ (fetchState().prefetchOrBusy && !fetchState().nascent) ? 'Connecting...' : 'Log In' }}
+          </button>
+        </form>
+      </div>
+    </div>
+  

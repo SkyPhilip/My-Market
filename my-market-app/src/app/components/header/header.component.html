@@ -1,0 +1,18 @@
+
+    <header class="header">
+      <div class="header__left">
+        <a class="header__brand" (click)="navigateTo('/dashboard')">Forster Market App</a>
+        <span class="header__datetime">{{ currentTime() }}</span>
+        <span class="header__market-status" [class.open]="marketOpen()" [class.closed]="!marketOpen()">
+          {{ marketOpen() ? 'Market Open' : 'Market Closed' }}
+        </span>
+      </div>
+      <nav class="header__nav">
+        <a class="header__link" (click)="navigateTo('/dashboard')">Dashboard</a>
+        <a class="header__link" (click)="navigateTo('/money-flow')">Money Flow</a>
+        <a class="header__link" (click)="navigateTo('/high-yield')">High Yield</a>
+        <a class="header__link" (click)="navigateTo('/settings')">Settings</a>
+        <button class="header__logout" (click)="onLogout()">Logout</button>
+      </nav>
+    </header>
+  

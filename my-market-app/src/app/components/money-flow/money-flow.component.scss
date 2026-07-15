@@ -1,0 +1,52 @@
+    .flow-page { padding: 24px; }
+    h2 { color: #e0e0e0; margin: 0 0 6px; font-size: 22px; }
+    .subtitle { color: #8892b0; font-size: 13px; margin: 0 0 16px; max-width: 640px; }
+    .movers-card { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; background: #16213e; border: 1px solid #2a3a5e; border-radius: 10px; padding: 14px 16px; }
+    .movers-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 8px; }
+    .movers-title--up { color: #28a745; }
+    .movers-title--down { color: #dc3545; }
+    .mover { display: grid; grid-template-columns: 1fr auto auto 24px; align-items: center; gap: 10px; padding: 4px 0; border-top: 1px solid #1c2a48; }
+    .movers-col .mover:first-of-type { border-top: none; }
+    .mover__sym { font-weight: 600; color: #4a9eff; font-size: 13px; }
+    .mover__price { color: #a0a0b0; font-size: 12px; }
+    .mover__pct { font-size: 13px; font-weight: 600; text-align: right; }
+    @media (max-width: 720px) { .movers-card { grid-template-columns: 1fr; } }
+    .as-of { color: #8892b0; font-size: 12px; margin: 0 0 12px; }
+    .loading { color: #8892b0; font-size: 14px; }
+    .load-btn { background: #4a9eff; color: #fff; border: none; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .add-watch-btn { border: 1px solid #28a745; border-radius: 5px; background: transparent; color: #28a745; width: 20px; height: 20px; line-height: 1; font-size: 14px; font-weight: 700; cursor: pointer; padding: 0; }
+    .add-watch-btn:hover:not(:disabled) { background: rgba(40, 167, 69, 0.12); }
+    .add-watch-btn.added { color: #8892b0; border-color: #2a3a5e; cursor: default; }
+    .flow-table { width: 100%; border-collapse: collapse; background: #16213e; border-radius: 10px; border: 1px solid #2a3a5e; overflow: hidden; }
+    .flow-table th { text-align: left; padding: 12px 16px; color: #8892b0; font-size: 13px; font-weight: 600; border-bottom: 1px solid #2a3a5e; background: #0f1a30; }
+    .flow-table th.right { text-align: right; }
+    .flow-table td { padding: 12px 16px; color: #e0e0e0; font-size: 14px; border-bottom: 1px solid #2a3a5e; }
+    .flow-table tr:last-child td { border-bottom: none; }
+    .sector-row { cursor: pointer; transition: background 0.12s; }
+    .sector-row:hover { background: #1b2947; }
+    .sector-row.expanded { background: #1b2947; }
+    .caret { display: inline-block; width: 14px; color: #8892b0; font-size: 11px; }
+    .right { text-align: right; }
+    .sector { font-weight: 600; }
+    .count { color: #8892b0; font-weight: 400; font-size: 12px; }
+    .score { font-weight: 700; border-radius: 4px; }
+    .positive { color: #28a745; }
+    .negative { color: #dc3545; }
+    .detail-row td { padding: 0; background: #0f1a30; border-bottom: 1px solid #2a3a5e; }
+    .holdings { width: 100%; border-collapse: collapse; }
+    .holdings th { text-align: left; padding: 8px 16px 8px 40px; color: #8892b0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+    .holdings th.right { text-align: right; padding: 8px 16px; }
+    .holdings td { padding: 7px 16px 7px 40px; color: #c8d0e0; font-size: 13px; border-top: 1px solid #1c2a48; }
+    .holdings td.right { padding: 7px 16px; }
+    .holdings tr:first-child td { border-top: none; }
+    .h-symbol { font-weight: 600; color: #e0e0e0; }
+    .h-name { color: #8892b0; }
+    .chart-card { margin-top: 20px; background: #16213e; border: 1px solid #2a3a5e; border-radius: 10px; padding: 16px; }
+    .chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .chart-head h3 { color: #e0e0e0; font-size: 15px; margin: 0; }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid #2a3a5e; border-radius: 6px; color: #e0e0e0; font-size: 11px; padding: 2px 7px; cursor: pointer; }
+    .legend-item.off { opacity: 0.4; }
+    .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    .flow-chart { width: 100%; height: 320px; }
+  

@@ -1,0 +1,534 @@
+<div class="watchlist-section">
+  <h2>{{ title() }}</h2>
+  <div class="watchlist-actions">
+    <form class="watchlist-form" (submit)="addSymbol($event)">
+      <div class="input-wrapper">
+        <input
+          type="text"
+          [(ngModel)]="newSymbol"
+          name="symbol"
+          placeholder="Add ticker (e.g. AAPL)"
+          class="watchlist-input"
+          [disabled]="adding()"
+        />
+        @if (newSymbol) {
+          <button type="button" class="clear-btn" (click)="clearInput()">✕</button>
+        }
+      </div>
+      @if (isCurrentHoldings()) {
+        <input
+          type="number"
+          [(ngModel)]="newShares"
+          name="shares"
+          placeholder="Shares"
+          class="watchlist-input holding-input"
+          min="0"
+          step="0.0001"
+          [disabled]="adding()"
+        />
+        <input
+          type="number"
+          [(ngModel)]="newCostBasis"
+          name="costBasis"
+          placeholder="Cost/Share"
+          class="watchlist-input holding-input"
+          min="0"
+          step="0.01"
+          [disabled]="adding()"
+        />
+      }
+      <button type="submit" class="watchlist-btn add-btn" [disabled]="!canSubmitSymbol() || adding()">Add</button>
+    </form>
+    <div class="io-buttons">
+      <button class="watchlist-btn io-btn" (click)="exportWatchlist()">Export</button>
+      <label class="watchlist-btn io-btn import-label">
+        Import
+        <input type="file" accept=".json" (change)="importWatchlist($event)" hidden />
+      </label>
+    </div>
+  </div>
+  @if (addError()) {
+    <p class="add-error">{{ addError() }}</p>
+  }
+  @if (watchlistState().prefetchOrBusy) {
+    <p class="loading">Loading {{ title() | lowercase }}...</p>
+  } @else if (watchlistState().errorResOrException) {
+    <p class="loading">Failed to load. <button (click)="loadWatchlist()">Retry</button></p>
+  } @else if (watchlistRows().length) {
+    <table class="watchlist-table">
+      <thead>
+        <tr>
+          <th class="sortable" (click)="sortBy('symbol')">Symbol <span class="sort-icon">{{ sortIcon('symbol') }}</span></th>
+          <th class="sortable" (click)="sortBy('name')">Name <span class="sort-icon">{{ sortIcon('name') }}</span></th>
+          <th class="sortable" (click)="sortBy('sector')">Sector <span class="sort-icon">{{ sortIcon('sector') }}</span></th>
+          <th class="sortable" (click)="sortBy('price')">Price <span class="sort-icon">{{ sortIcon('price') }}</span></th>
+          <th class="sortable" (click)="sortBy('change')">Change <span class="sort-icon">{{ sortIcon('change') }}</span></th>
+          <th class="sortable" (click)="sortBy('changePercent')">Change % <span class="sort-icon">{{ sortIcon('changePercent') }}</span></th>
+          <th class="sortable" (click)="sortBy('volume')">Volume <span class="sort-icon">{{ sortIcon('volume') }}</span></th>
+          <th class="sortable" (click)="sortBy('pegy')">PEGY <span class="sort-icon">{{ sortIcon('pegy') }}</span></th>
+          <th class="sortable" (click)="sortBy('dividendYield')">Div Yield <span class="sort-icon">{{ sortIcon('dividendYield') }}</span></th>
+          @if (hasCostBasis()) {
+            <th class="sortable" (click)="sortBy('shares')">Shares <span class="sort-icon">{{ sortIcon('shares') }}</span></th>
+            <th class="sortable" (click)="sortBy('costBasis')">Cost <span class="sort-icon">{{ sortIcon('costBasis') }}</span></th>
+            <th class="sortable" (click)="sortBy('totalCost')">Total Cost <span class="sort-icon">{{ sortIcon('totalCost') }}</span></th>
+            <th class="sortable" (click)="sortBy('marketValue')">Mkt Value <span class="sort-icon">{{ sortIcon('marketValue') }}</span></th>
+            <th class="sortable" (click)="sortBy('gainLoss')">G/L <span class="sort-icon">{{ sortIcon('gainLoss') }}</span></th>
+            <th class="sortable" (click)="sortBy('gainLossPercent')">G/L % <span class="sort-icon">{{ sortIcon('gainLossPercent') }}</span></th>
+            <th class="sortable" (click)="sortBy('totalGainLoss')">Total G/L <span class="sort-icon">{{ sortIcon('totalGainLoss') }}</span></th>
+            <th class="sortable" (click)="sortBy('totalGainLossPercent')">Total G/L % <span class="sort-icon">{{ sortIcon('totalGainLossPercent') }}</span></th>
+          }
+          <th class="news-col">Docs</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of sortedWatchlistRows(); track row.symbol) {
+          <tr class="clickable-row" [class.expanded]="expandedSymbols().has(row.symbol)" (click)="toggleChart(row.symbol)">
+            <td class="symbol">
+              <span class="symbol-text">{{ row.symbol }}</span>
+            </td>
+            <td class="name">{{ row.name }}</td>
+            <td class="sector">{{ row.sector }}</td>
+            <td class="price">{{ row.price !== null ? ('$' + (row.price | number:'1.2-2')) : '—' }}</td>
+            <td class="change" [class.positive]="(row.change ?? 0) >= 0" [class.negative]="(row.change ?? 0) < 0">
+              {{ row.change !== null ? ((row.change >= 0 ? '+' : '') + (row.change | number:'1.2-2')) : '—' }}
+            </td>
+            <td class="change" [class.positive]="(row.changePercent ?? 0) >= 0" [class.negative]="(row.changePercent ?? 0) < 0">
+              {{ row.changePercent !== null ? ((row.changePercent >= 0 ? '+' : '') + (row.changePercent | number:'1.2-2') + '%') : '—' }}
+            </td>
+            <td class="volume">{{ formatVolume(row.volume) }}</td>
+            <td class="price">
+              @if (row.pegyLoading) {
+                <span class="pegy-pending">…</span>
+              } @else if (row.pegyLoaded) {
+                <button type="button" class="pegy-btn computed" [title]="pegyTooltip" (click)="loadPegy(row.symbol); $event.stopPropagation()">{{ row.pegy !== null ? (row.pegy | number:'1.3-3') : 'N/A' }}</button>
+              } @else {
+                <button type="button" class="pegy-btn" [title]="pegyTooltip" (click)="loadPegy(row.symbol); $event.stopPropagation()">PEGY</button>
+              }
+            </td>
+            <td class="price">{{ row.dividendYield !== null ? ((row.dividendYield | number:'1.2-2') + '%') : '—' }}</td>
+            @if (hasCostBasis()) {
+              <td class="shares">{{ row.shares !== null ? (row.shares | number:'1.0-4') : '—' }}</td>
+              <td class="price">{{ row.costBasis !== null ? ('$' + (row.costBasis | number:'1.2-2')) : '—' }}</td>
+              <td class="price">{{ row.totalCost !== null ? ('$' + (row.totalCost | number:'1.2-2')) : '—' }}</td>
+              <td class="price">{{ row.marketValue !== null ? ('$' + (row.marketValue | number:'1.2-2')) : '—' }}</td>
+              <td class="change" [class.positive]="(row.gainLoss ?? 0) >= 0" [class.negative]="(row.gainLoss ?? 0) < 0">
+                {{ row.gainLoss !== null ? ((row.gainLoss >= 0 ? '+' : '') + (row.gainLoss | number:'1.2-2')) : '—' }}
+              </td>
+              <td class="change" [class.positive]="(row.gainLossPercent ?? 0) >= 0" [class.negative]="(row.gainLossPercent ?? 0) < 0">
+                {{ row.gainLossPercent !== null ? ((row.gainLossPercent >= 0 ? '+' : '') + (row.gainLossPercent | number:'1.2-2') + '%') : '—' }}
+              </td>
+              <td class="change" [class.positive]="(row.totalGainLoss ?? 0) >= 0" [class.negative]="(row.totalGainLoss ?? 0) < 0">
+                {{ row.totalGainLoss !== null ? ((row.totalGainLoss >= 0 ? '+$' : '-$') + (row.totalGainLoss >= 0 ? row.totalGainLoss : -row.totalGainLoss | number:'1.2-2')) : '—' }}
+              </td>
+              <td class="change" [class.positive]="(row.totalGainLossPercent ?? 0) >= 0" [class.negative]="(row.totalGainLossPercent ?? 0) < 0">
+                {{ row.totalGainLossPercent !== null ? ((row.totalGainLossPercent >= 0 ? '+' : '') + (row.totalGainLossPercent | number:'1.2-2') + '%') : '—' }}
+              </td>
+            }
+            <td class="news-col">
+              <button
+                type="button"
+                class="watchlist-btn news-btn"
+                (click)="openNews(row.symbol); $event.stopPropagation()"
+                [attr.aria-label]="'View news for ' + row.symbol"
+                title="View news"
+              >📰</button>
+            </td>
+            <td><button type="button" class="watchlist-btn remove-btn" (click)="removeSymbol(row.symbol); $event.stopPropagation()">✕</button></td>
+          </tr>
+          @if (expandedSymbols().has(row.symbol)) {
+            <tr class="chart-row">
+              <td [attr.colspan]="hasCostBasis() ? 19 : 11">
+                @if (row.chartLoading) {
+                  <p class="chart-loading">Loading chart...</p>
+                } @else {
+                  <div class="chart-panel" [class.fullscreen]="fullscreenSymbol() === row.symbol">
+                    <div class="chart-toolbar">
+                      <span class="chart-title">{{ row.symbol }}<span class="chart-title__name">{{ row.name }}</span></span>
+                      @for (range of timeRanges; track range) {
+                        <button
+                          type="button"
+                          class="range-btn"
+                          [class.active]="row.range === range"
+                          (click)="selectRange(row.symbol, range)"
+                        >{{ range }}</button>
+                      }
+                      <button
+                        type="button"
+                        class="range-btn ma20-btn"
+                        [class.active]="row.showMovingAverage20"
+                        (click)="toggleMovingAverage20(row.symbol)"
+                        title="Show or hide the 20-period moving average (window scales with the selected timeframe)"
+                      >20MA</button>
+                      <button
+                        type="button"
+                        class="range-btn ma50-btn"
+                        [class.active]="row.showMovingAverage"
+                        (click)="toggleMovingAverage(row.symbol)"
+                        title="Show or hide the 50-period moving average (window scales with the selected timeframe)"
+                      >50MA</button>
+                      <button
+                        type="button"
+                        class="range-btn ma150-btn"
+                        [class.active]="row.showMovingAverage150"
+                        (click)="toggleMovingAverage150(row.symbol)"
+                        title="Show or hide the 150-period moving average (window scales with the selected timeframe)"
+                      >150MA</button>
+                      <button
+                        type="button"
+                        class="range-btn ma200-btn"
+                        [class.active]="row.showMovingAverage200"
+                        (click)="toggleMovingAverage200(row.symbol)"
+                        title="Show or hide the 200-period moving average (window scales with the selected timeframe)"
+                      >200MA</button>
+                      @if (isCurrentHoldings() && row.costBasis !== null) {
+                        <button
+                          type="button"
+                          class="range-btn cost-basis-btn"
+                          [class.active]="costBasisSymbols().has(row.symbol)"
+                          (click)="toggleCostBasis(row.symbol)"
+                          [title]="'Show or hide your cost basis ($' + (row.costBasis | number:'1.2-2') + '/share) as a line on the chart'"
+                        >Cost Basis</button>
+                      }
+                      @if (isCurrentHoldings()) {
+                        <button
+                          type="button"
+                          class="range-btn trailing-stop-btn"
+                          [class.active]="trailingStops().has(row.symbol)"
+                          (click)="toggleTrailingStop(row.symbol)"
+                          [title]="trailingStops().has(row.symbol) ? ('Trailing stop ' + (trailingStopPct(row.symbol) | number:'1.0-2') + '% · $' + (trailingStopLevel(row.symbol) | number:'1.2-2') + ' · expires ' + (trailingStopExpiry(row.symbol) | date:'MMM d, y') + ' — click to remove') : 'Set a trailing stop percentage below the peak, with a cross alert while polling'"
+                        >Trailing Stop</button>
+                      }
+                      @if (row.range === '5D') {
+                        <button
+                          type="button"
+                          class="range-btn"
+                          [class.active]="row.showRangeLevels"
+                          (click)="toggleRangeLevels(row.symbol)"
+                          title="Show previous day range lines on 5D charts"
+                        >Range High/Low</button>
+                      }
+                      @if (row.range === '1D') {
+                        <div class="split-btn">
+                          <button
+                            type="button"
+                            class="range-btn"
+                            [class.active]="openingRangeSymbols().has(row.symbol)"
+                            (click)="toggleOpeningRange(row.symbol)"
+                            title="Mark the first 15 minutes (9:30–9:45 ET) high/low"
+                          >Opening Range</button>
+                          @if (openingRangeSymbols().has(row.symbol)) {
+                            <button
+                              type="button"
+                              class="range-btn"
+                              [class.active]="openingRangeNarrowSymbols().has(row.symbol)"
+                              (click)="toggleOpeningRangeNarrow(row.symbol)"
+                              title="Narrow the opening range band by 25% around its midpoint"
+                            >−25%</button>
+                          }
+                        </div>
+                      }
+                      <button
+                        type="button"
+                        class="range-btn macd-btn"
+                        [class.active]="macdSymbols().has(row.symbol)"
+                        (click)="toggleMacd(row.symbol)"
+                        title="Show or hide Impulse MACD (34/9) in a lower pane — flat inside the channel, impulses on momentum breakouts"
+                      >iMACD</button>
+                      <button
+                        type="button"
+                        class="range-btn div-btn div-bull"
+                        [class.active]="hasDivergence(row.symbol, 'regBull')"
+                        (click)="toggleDivergence(row.symbol, 'regBull')"
+                        title="Regular bullish divergence: price lower low + momentum higher low — possible reversal up"
+                      >Reg▲</button>
+                      <button
+                        type="button"
+                        class="range-btn div-btn div-bull"
+                        [class.active]="hasDivergence(row.symbol, 'hidBull')"
+                        (click)="toggleDivergence(row.symbol, 'hidBull')"
+                        title="Hidden bullish divergence: price higher low + momentum lower low — uptrend likely to continue"
+                      >Hid▲</button>
+                      <button
+                        type="button"
+                        class="range-btn div-btn div-bear"
+                        [class.active]="hasDivergence(row.symbol, 'regBear')"
+                        (click)="toggleDivergence(row.symbol, 'regBear')"
+                        title="Regular bearish divergence: price higher high + momentum lower high — possible reversal down"
+                      >Reg▼</button>
+                      <button
+                        type="button"
+                        class="range-btn div-btn div-bear"
+                        [class.active]="hasDivergence(row.symbol, 'hidBear')"
+                        (click)="toggleDivergence(row.symbol, 'hidBear')"
+                        title="Hidden bearish divergence: price lower high + momentum higher high — downtrend likely to continue"
+                      >Hid▼</button>
+                      @if (isEtf(row.symbol)) {
+                        <span class="etf-badge" title="ETF/Fund — no comparable peer">ETF</span>
+                      } @else {
+                        <button
+                          type="button"
+                          class="peer-btn"
+                          [class.active]="peerSymbols().has(row.symbol)"
+                          [class.loading]="row.peerLoading"
+                          (click)="togglePeer(row.symbol)"
+                          [title]="row.peerName ? ('Peer: ' + row.peerName) : (row.peerSymbol ? ('Peer: ' + row.peerSymbol) : 'Show closest peer overlay')"
+                        >{{ row.peerLoading ? '…' : (row.peerSymbol ?? 'Peer') }}</button>
+                      }
+                      <button
+                        type="button"
+                        class="range-btn news-toolbar-btn"
+                        (click)="openNews(row.symbol)"
+                        [attr.aria-label]="'View news for ' + row.symbol"
+                        title="View news"
+                      >📰 News</button>
+                      @if (row.range === '1D') {
+                        <button
+                          type="button"
+                          class="range-btn poll-btn"
+                          [class.active]="pollSymbols().has(row.symbol)"
+                          (click)="togglePoll(row.symbol)"
+                          title="Auto-refresh this 1D chart every 30s while the market is open"
+                        >⟳ Poll</button>
+                      }
+                      <button
+                        type="button"
+                        class="range-btn fullscreen-btn"
+                        (click)="toggleFullscreen(row.symbol)"
+                        [title]="fullscreenSymbol() === row.symbol ? 'Exit full screen (Esc)' : 'Expand chart to full screen'"
+                      >{{ fullscreenSymbol() === row.symbol ? '✕ Close' : '⛶ Full screen' }}</button>
+                    </div>
+                    @if (row.metricsLoading) {
+                      <div class="fundamentals fundamentals--state">Loading fundamentals…</div>
+                    } @else if (row.metrics) {
+                      <div class="fundamentals">
+                        <span class="fstat" title="Beta — volatility vs. the market (1.0 = market)"><span class="fstat__k">β</span>{{ row.metrics.beta !== null ? (row.metrics.beta | number:'1.2-2') : '—' }}</span>
+                        <span class="fstat" title="Price / Earnings (TTM)"><span class="fstat__k">P/E</span>{{ row.metrics.peTTM !== null ? (row.metrics.peTTM | number:'1.1-1') : '—' }}</span>
+                        <span class="fstat" title="Price / Sales (TTM)"><span class="fstat__k">P/S</span>{{ row.metrics.psTTM !== null ? (row.metrics.psTTM | number:'1.1-1') : '—' }}</span>
+                        <span class="fstat" title="Price / Book"><span class="fstat__k">P/B</span>{{ row.metrics.pbAnnual !== null ? (row.metrics.pbAnnual | number:'1.1-1') : '—' }}</span>
+                        <span class="fstat" title="Return on Equity (TTM)"><span class="fstat__k">ROE</span>{{ row.metrics.roeTTM !== null ? ((row.metrics.roeTTM | number:'1.0-0') + '%') : '—' }}</span>
+                        <span class="fstat" title="Net profit margin (TTM)"><span class="fstat__k">Margin</span>{{ row.metrics.netMarginTTM !== null ? ((row.metrics.netMarginTTM | number:'1.0-0') + '%') : '—' }}</span>
+                        <span class="fstat" title="Total debt / total equity"><span class="fstat__k">D/E</span>{{ row.metrics.debtToEquity !== null ? (row.metrics.debtToEquity | number:'1.2-2') : '—' }}</span>
+                        <span class="fstat" title="Current ratio (liquidity)"><span class="fstat__k">Curr</span>{{ row.metrics.currentRatio !== null ? (row.metrics.currentRatio | number:'1.2-2') : '—' }}</span>
+                        <span class="fstat" title="Revenue growth (YoY, TTM)" [class.positive]="(row.metrics.revenueGrowthYoY ?? 0) >= 0" [class.negative]="(row.metrics.revenueGrowthYoY ?? 0) < 0"><span class="fstat__k">Rev</span>{{ row.metrics.revenueGrowthYoY !== null ? ((row.metrics.revenueGrowthYoY >= 0 ? '+' : '') + (row.metrics.revenueGrowthYoY | number:'1.0-0') + '%') : '—' }}</span>
+                        <span class="fstat" title="EPS growth (5-year)" [class.positive]="(row.metrics.epsGrowth5Y ?? 0) >= 0" [class.negative]="(row.metrics.epsGrowth5Y ?? 0) < 0"><span class="fstat__k">EPS 5Y</span>{{ row.metrics.epsGrowth5Y !== null ? ((row.metrics.epsGrowth5Y >= 0 ? '+' : '') + (row.metrics.epsGrowth5Y | number:'1.0-0') + '%') : '—' }}</span>
+                        @if (row.metrics.week52Low !== null && row.metrics.week52High !== null) {
+                          <span class="fstat fstat--range" title="52-week range vs. current price">
+                            <span class="fstat__k">52W</span>
+                            <span class="range52">
+                              <span class="range52__lo">{{ row.metrics.week52Low | number:'1.0-0' }}</span>
+                              <span class="range52__bar">
+                                @if (week52Position(row) !== null) {
+                                  <span class="range52__marker" [style.left.%]="week52Position(row)"></span>
+                                }
+                              </span>
+                              <span class="range52__hi">{{ row.metrics.week52High | number:'1.0-0' }}</span>
+                            </span>
+                          </span>
+                        }
+                        @if (row.earningsSurprises?.length) {
+                          <span class="fstat fstat--surprise" title="Recent EPS beats/misses (oldest → newest)">
+                            <span class="fstat__k">EPS Surp.</span>
+                            @for (s of row.earningsSurprises; track s.period) {
+                              <span class="surprise-dot" [class.beat]="(s.surprisePercent ?? 0) >= 0" [class.miss]="(s.surprisePercent ?? 0) < 0" [title]="s.period + ' · actual ' + (s.actual !== null ? s.actual : '—') + ' vs est ' + (s.estimate !== null ? s.estimate : '—') + ' (' + ((s.surprisePercent ?? 0) >= 0 ? '+' : '') + (s.surprisePercent | number:'1.1-1') + '%)'"></span>
+                            }
+                            @if (latestSurprise(row); as ls) {
+                              <span [class.positive]="(ls.surprisePercent ?? 0) >= 0" [class.negative]="(ls.surprisePercent ?? 0) < 0">{{ (ls.surprisePercent ?? 0) >= 0 ? 'Beat' : 'Miss' }} {{ (ls.surprisePercent ?? 0) >= 0 ? '+' : '' }}{{ ls.surprisePercent | number:'1.1-1' }}%</span>
+                            }
+                          </span>
+                        }
+                        @if (row.nextEarnings) {
+                          <span class="fstat fstat--earn" [class.earn-soon]="daysUntilEarnings(row) !== null && daysUntilEarnings(row)! <= 7" [title]="'Next earnings report' + (row.nextEarnings.epsEstimate !== null ? (' · est. EPS $' + (row.nextEarnings.epsEstimate | number:'1.2-2')) : '')">
+                            <span class="fstat__k">⚡ Earnings</span>{{ row.nextEarnings.date + 'T00:00:00' | date:'MMM d' }}
+                            @if (daysUntilEarnings(row) !== null) { <span class="earn-days">({{ daysUntilEarnings(row) }}d)</span> }
+                            @if (earningsHourLabel(row.nextEarnings.hour)) { <span class="earn-hour">{{ earningsHourLabel(row.nextEarnings.hour) }}</span> }
+                          </span>
+                        }
+                      </div>
+                    }
+                    @if (row.recommendationLoading) {
+                      <div class="reco reco--state">Loading analyst ratings…</div>
+                    } @else if (row.recommendation && recoTotal(row.recommendation) > 0) {
+                      <div class="reco" [title]="'Analyst recommendations (' + row.recommendation.period + ')'">
+                        <span class="fstat__k">Analysts</span>
+                        <span class="reco-bar">
+                          @if (row.recommendation.strongBuy) {
+                            <span class="reco-seg reco-seg--sb" [style.width.%]="row.recommendation.strongBuy / recoTotal(row.recommendation) * 100" [title]="'Strong Buy: ' + row.recommendation.strongBuy"></span>
+                          }
+                          @if (row.recommendation.buy) {
+                            <span class="reco-seg reco-seg--b" [style.width.%]="row.recommendation.buy / recoTotal(row.recommendation) * 100" [title]="'Buy: ' + row.recommendation.buy"></span>
+                          }
+                          @if (row.recommendation.hold) {
+                            <span class="reco-seg reco-seg--h" [style.width.%]="row.recommendation.hold / recoTotal(row.recommendation) * 100" [title]="'Hold: ' + row.recommendation.hold"></span>
+                          }
+                          @if (row.recommendation.sell) {
+                            <span class="reco-seg reco-seg--s" [style.width.%]="row.recommendation.sell / recoTotal(row.recommendation) * 100" [title]="'Sell: ' + row.recommendation.sell"></span>
+                          }
+                          @if (row.recommendation.strongSell) {
+                            <span class="reco-seg reco-seg--ss" [style.width.%]="row.recommendation.strongSell / recoTotal(row.recommendation) * 100" [title]="'Strong Sell: ' + row.recommendation.strongSell"></span>
+                          }
+                        </span>
+                        <span class="reco-counts">
+                          <span class="reco-counts__buy">{{ row.recommendation.strongBuy + row.recommendation.buy }} Buy</span>
+                          <span class="reco-counts__hold">{{ row.recommendation.hold }} Hold</span>
+                          <span class="reco-counts__sell">{{ row.recommendation.sell + row.recommendation.strongSell }} Sell</span>
+                          <span class="reco-counts__total">({{ recoTotal(row.recommendation) }})</span>
+                        </span>
+                      </div>
+                    }
+                    <app-chart
+                      [data]="row.chartData"
+                      [color]="'#4a9eff'"
+                      [candleData]="row.candleData"
+                      [showCandles]="row.range === '1D' || row.range === '5D' || row.range === '1M'"
+                      [maData]="row.maData"
+                      [showMovingAverage]="row.showMovingAverage"
+                      [ma20Data]="row.ma20Data"
+                      [showMovingAverage20]="row.showMovingAverage20"
+                      [ma150Data]="row.ma150Data"
+                      [showMovingAverage150]="row.showMovingAverage150"
+                      [ma200Data]="row.ma200Data"
+                      [showMovingAverage200]="row.showMovingAverage200"
+                      [volumeData]="row.volumeData"
+                      [volumeProfileData]="row.volumeProfileData"
+                      [showRangeLines]="row.showRangeLevels && row.range === '5D'"
+                      [rangeHigh]="row.rangeHigh"
+                      [rangeLow]="row.rangeLow"
+                      [swingHigh]="row.swingHigh"
+                      [swingLow]="row.swingLow"
+                      [showOpeningRange]="openingRangeSymbols().has(row.symbol) && row.range === '1D'"
+                      [openingRangeHigh]="openingRangeHighFor(row)"
+                      [openingRangeLow]="openingRangeLowFor(row)"
+                      [showCostBasis]="costBasisSymbols().has(row.symbol)"
+                      [costBasis]="row.costBasis"
+                      [showTrailingStop]="trailingStops().has(row.symbol)"
+                      [trailingStop]="trailingStopLevel(row.symbol)"
+                      [showSessionShade]="row.range === '1D'"
+                      [sessionShadeUntil]="row.sessionShadeUntil"
+                      [peerData]="row.peerData"
+                      [showPeer]="peerSymbols().has(row.symbol)"
+                      [showMacd]="macdSymbols().has(row.symbol)"
+                      [divergenceTypes]="divergencesFor(row.symbol)"
+                      [fillHeight]="fullscreenSymbol() === row.symbol"
+                    ></app-chart>
+                  </div>
+                }
+              </td>
+            </tr>
+          }
+        }
+      </tbody>
+      @if (hasCostBasis()) {
+        <tfoot>
+          <tr class="summary-row">
+            <td colspan="8">Portfolio Totals</td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td class="price">{{'$'}}{{ portfolioTotalCost() | number:'1.2-2' }}</td>
+            <td class="price">{{'$'}}{{ portfolioMarketValue() | number:'1.2-2' }}</td>
+            <td></td>
+            <td></td>
+            <td class="change" [class.positive]="portfolioTotalGainLoss() >= 0" [class.negative]="portfolioTotalGainLoss() < 0">
+              {{ portfolioTotalGainLoss() >= 0 ? '+$' : '-$' }}{{ (portfolioTotalGainLoss() >= 0 ? portfolioTotalGainLoss() : -portfolioTotalGainLoss()) | number:'1.2-2' }}
+            </td>
+            <td class="change" [class.positive]="portfolioTotalGainLossPercent() >= 0" [class.negative]="portfolioTotalGainLossPercent() < 0">
+              {{ portfolioTotalGainLossPercent() >= 0 ? '+' : '' }}{{ portfolioTotalGainLossPercent() | number:'1.2-2' }}%
+            </td>
+            <td></td>
+          </tr>
+        </tfoot>
+      }
+    </table>
+    @if (newsPanelOpen()) {
+      <aside class="news-panel" role="dialog" aria-modal="false" [attr.aria-labelledby]="newsPanelTitleId()">
+        <header class="news-panel__header">
+          <div>
+            <p class="news-panel__eyebrow">Ticker brief</p>
+            <h3 [id]="newsPanelTitleId()">{{ newsSymbol() }} News</h3>
+          </div>
+          <button type="button" class="news-panel__close" (click)="closeNewsPanel()" aria-label="Close documentation panel">✕</button>
+        </header>
+        <div class="news-panel__content">
+          @if (newsLoading()) {
+            <p class="news-panel__state">Loading recent items...</p>
+          } @else if (newsLoadError()) {
+            <p class="news-panel__state news-panel__state--error">{{ newsLoadError() }}</p>
+          } @else if (newsArticles().length) {
+            @if (paywalledNewsCount() > 0) {
+              <label class="news-filter">
+                <input
+                  type="checkbox"
+                  [checked]="hidePaywalledNews()"
+                  (change)="toggleHidePaywalled()"
+                />
+                <span>Hide subscription-only sources ({{ paywalledNewsCount() }})</span>
+              </label>
+            }
+            @if (visibleNewsArticles().length) {
+              @for (article of visibleNewsArticles(); track article.url) {
+                <article class="news-item">
+                  @if (article.image) {
+                    <img class="news-item__image" [src]="article.image" [alt]="article.headline" loading="lazy" />
+                  }
+                  <div class="news-item__body">
+                    <a
+                      class="news-item__headline"
+                      [href]="article.url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >{{ article.headline }}</a>
+                    <p class="news-item__summary">{{ article.summary || 'No summary available.' }}</p>
+                    <div class="news-item__meta-row">
+                      <span class="news-item__source">{{ article.source }}</span>
+                      @if (isPaywalledArticle(article)) {
+                        <span
+                          class="news-item__paywall"
+                          title="This publisher usually requires a paid subscription to read the full article"
+                        >🔒 Subscription</span>
+                      }
+                      <span class="news-item__age">{{ relativeTime(article.datetime) }}</span>
+                      <a
+                        class="news-item__open"
+                        [href]="article.url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        [attr.aria-label]="'Open story for ' + article.headline"
+                      >Open ↗</a>
+                    </div>
+                  </div>
+                </article>
+              }
+            } @else {
+              <p class="news-panel__state">All recent items are subscription-only. <button type="button" class="news-panel__link-btn" (click)="toggleHidePaywalled()">Show them</button></p>
+            }
+          } @else {
+            <p class="news-panel__state">No recent news found for {{ newsSymbol() }}.</p>
+          }
+        </div>
+      </aside>
+    }
+  } @else {
+    <p class="loading">No items found.</p>
+  }
+  @if (trailingStopForm(); as ts) {
+    <div class="ts-modal-backdrop" (click)="cancelTrailingStop()">
+      <div class="ts-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="ts-modal-title">
+        <h3 id="ts-modal-title" class="ts-modal__title">Trailing stop · {{ ts.symbol }}</h3>
+        <p class="ts-modal__price">Current price {{'$'}}{{ ts.price | number:'1.2-2' }}</p>
+        <label class="ts-modal__field">
+          <span>Trailing %</span>
+          <input type="number" [(ngModel)]="tsPctInput" name="tsPct" min="0.1" max="99.9" step="0.1" placeholder="e.g. 3.5" />
+        </label>
+        <label class="ts-modal__field">
+          <span>Expiry date</span>
+          <input type="date" [(ngModel)]="tsExpiryInput" name="tsExpiry" [min]="minExpiryDate()" />
+        </label>
+        <div class="ts-modal__actions">
+          <button type="button" class="watchlist-btn io-btn" (click)="cancelTrailingStop()">Cancel</button>
+          <button type="button" class="watchlist-btn add-btn" (click)="confirmTrailingStop()">Set stop</button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

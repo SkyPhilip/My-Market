@@ -1,0 +1,144 @@
+    <div class="flow-page">
+      <h2>Money Flow</h2>
+      <p class="subtitle">
+        Inferred sector rotation from advancing/declining volume, breadth, and relative strength.
+        Not literal institutional order flow.
+      </p>
+
+      @if (moversGainers().length || moversLosers().length) {
+        <div class="movers-card">
+          <div class="movers-col">
+            <h3 class="movers-title movers-title--up">Top Gainers</h3>
+            @for (m of moversGainers(); track m.symbol) {
+              <div class="mover">
+                <span class="mover__sym">{{ m.symbol }}</span>
+                <span class="mover__price">{{ '$' + (m.price | number:'1.2-2') }}</span>
+                <span class="mover__pct positive">+{{ m.percent_change | number:'1.2-2' }}%</span>
+                <button
+                  type="button"
+                  class="add-watch-btn"
+                  [class.added]="inWatchList(m.symbol)"
+                  [disabled]="inWatchList(m.symbol)"
+                  (click)="addToWatchList(m.symbol)"
+                  [title]="inWatchList(m.symbol) ? 'In Watch List' : 'Add to Watch List'"
+                >{{ inWatchList(m.symbol) ? '✓' : '+' }}</button>
+              </div>
+            }
+          </div>
+          <div class="movers-col">
+            <h3 class="movers-title movers-title--down">Top Losers</h3>
+            @for (m of moversLosers(); track m.symbol) {
+              <div class="mover">
+                <span class="mover__sym">{{ m.symbol }}</span>
+                <span class="mover__price">{{ '$' + (m.price | number:'1.2-2') }}</span>
+                <span class="mover__pct negative">{{ m.percent_change | number:'1.2-2' }}%</span>
+                <button
+                  type="button"
+                  class="add-watch-btn"
+                  [class.added]="inWatchList(m.symbol)"
+                  [disabled]="inWatchList(m.symbol)"
+                  (click)="addToWatchList(m.symbol)"
+                  [title]="inWatchList(m.symbol) ? 'In Watch List' : 'Add to Watch List'"
+                >{{ inWatchList(m.symbol) ? '✓' : '+' }}</button>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      @if (loading()) { <p class="loading">Analyzing sectors…</p> }
+      @if (error()) {
+        <p class="loading">{{ error() }} <button class="load-btn" (click)="load()">Retry</button></p>
+      }
+
+      @if (loaded()) {
+        <p class="as-of">As of {{ asOf() }} · benchmark SPY · sorted by flow score</p>
+        <table class="flow-table">
+          <thead>
+            <tr>
+              <th>Sector</th>
+              <th class="right" [title]="flowScoreTooltip">Flow Score</th>
+              <th class="right">Rel. Strength</th>
+              <th class="right">Breadth</th>
+              <th class="right">Net Volume</th>
+              <th class="right">Vol Thrust</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of flows(); track row.sector) {
+              <tr class="sector-row" [class.expanded]="expandedSector() === row.sector"
+                  (click)="toggleRow(row.sector)">
+                <td class="sector">
+                  <span class="caret">{{ expandedSector() === row.sector ? '▾' : '▸' }}</span>
+                  {{ row.sector }} <span class="count">{{ formatVolume(row.totalVolume) }}</span>
+                </td>
+                <td class="right score" [style.background]="scoreColor(row.flowScore)">{{ row.flowScore | number:'1.2-2' }}</td>
+                <td class="right" [class.positive]="row.relStrength >= 0" [class.negative]="row.relStrength < 0">
+                  {{ (row.relStrength >= 0 ? '+' : '') + (row.relStrength | number:'1.2-2') }}%
+                </td>
+                <td class="right">{{ row.breadthPct }}%</td>
+                <td class="right" [class.positive]="row.netVolume >= 0" [class.negative]="row.netVolume < 0">
+                  {{ formatVolume(row.netVolume) }}
+                </td>
+                <td class="right">{{ row.volumeThrust | number:'1.2-2' }}×</td>
+              </tr>
+              @if (expandedSector() === row.sector) {
+                <tr class="detail-row">
+                  <td colspan="6">
+                    <table class="holdings">
+                      <thead>
+                        <tr>
+                          <th>Symbol</th>
+                          <th>Company</th>
+                          <th class="right">Change %</th>
+                          <th class="right">Volume</th>
+                          <th class="right">Watch</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (h of row.holdings; track h.symbol) {
+                          <tr>
+                            <td class="h-symbol">{{ h.symbol }}</td>
+                            <td class="h-name">{{ holdingName(h.symbol) }}</td>
+                            <td class="right" [class.positive]="(h.changePct ?? 0) >= 0" [class.negative]="(h.changePct ?? 0) < 0">
+                              @if (h.changePct === null) { — }
+                              @else { {{ (h.changePct >= 0 ? '+' : '') + (h.changePct | number:'1.2-2') }}% }
+                            </td>
+                            <td class="right">{{ formatVolume(h.volume) }}</td>
+                            <td class="right">
+                              <button
+                                type="button"
+                                class="add-watch-btn"
+                                [class.added]="inWatchList(h.symbol)"
+                                [disabled]="inWatchList(h.symbol)"
+                                (click)="addToWatchList(h.symbol)"
+                                [title]="inWatchList(h.symbol) ? 'In Watch List' : 'Add to Watch List'"
+                              >{{ inWatchList(h.symbol) ? '✓' : '+' }}</button>
+                            </td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+
+        <div class="chart-card">
+          <div class="chart-head">
+            <h3>Flow score over time · {{ historyDays() }} sessions</h3>
+            <div class="legend">
+              @for (s of flowHistory(); track s.sector) {
+                <button type="button" class="legend-item" [class.off]="hiddenSectors().has(s.sector)" (click)="toggleSector(s.sector)">
+                  <span class="swatch" [style.background]="s.color"></span>{{ s.sector }}
+                </button>
+              }
+            </div>
+          </div>
+          <div #flowChart class="flow-chart"></div>
+        </div>
+      }
+    </div>
+  

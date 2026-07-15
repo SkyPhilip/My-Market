@@ -75,123 +75,8 @@ interface VolumeProfileBin {
 @Component({
   selector: 'app-chart',
   standalone: true,
-  template: `
-    <div #chartWrapper class="chart-wrapper" [class.fill]="fillHeight">
-      <div #crosshairLabel class="crosshair-label"></div>
-      <div #maTooltip class="ma-tooltip"></div>
-      <div #chartContainer class="chart-container"></div>
-      <div #volumeProfile class="volume-profile"></div>
-    </div>
-  `,
-  styles: [`
-    .chart-wrapper {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 120px;
-      width: 100%;
-      position: relative;
-    }
-    .volume-profile {
-      position: relative;
-      width: 120px;
-      min-width: 120px;
-      max-width: 120px;
-      height: 250px;
-      pointer-events: auto;
-      z-index: 2;
-      background: linear-gradient(to left, rgba(26, 26, 46, 0.95), rgba(26, 26, 46, 0.7));
-      border-left: 1px solid #2a3a5e;
-      overflow: hidden;
-      display: block;
-    }
-    .volume-profile svg {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
-    .volume-profile__header {
-      position: absolute;
-      top: 2px;
-      left: 14px;
-      right: 4px;
-      padding: 1px 4px;
-      border-radius: 3px;
-      background: rgba(15, 26, 48, 0.92);
-      border: 1px solid rgba(42, 58, 94, 0.9);
-      color: #e0e0e0;
-      font-size: 10px;
-      font-weight: 600;
-      line-height: 1.2;
-      white-space: nowrap;
-      text-align: center;
-      z-index: 4;
-      cursor: help;
-      pointer-events: auto;
-    }
-    .volume-profile__title {
-      fill: #e0e0e0;
-      font-size: 10px;
-      font-weight: 600;
-    }
-    .volume-profile__value-area {
-      fill: rgba(40, 167, 69, 0.12);
-      stroke: rgba(40, 167, 69, 0.45);
-      stroke-width: 1;
-    }
-    .volume-profile__bar {
-      fill: rgba(74, 158, 255, 0.42);
-      opacity: 1;
-      stroke: rgba(74, 158, 255, 0.7);
-      stroke-width: 1;
-    }
-    .chart-container {
-      min-width: 0;
-      width: 100%;
-      height: 250px;
-      position: relative;
-      z-index: 1;
-    }
-    .chart-wrapper.fill {
-      height: 100%;
-    }
-    .chart-wrapper.fill .chart-container {
-      height: 100%;
-    }
-    .chart-wrapper.fill .volume-profile {
-      height: 100%;
-    }
-    .crosshair-label {
-      position: absolute;
-      top: 4px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(74, 158, 255, 0.85);
-      color: #fff;
-      font-size: 11px;
-      font-weight: 500;
-      padding: 2px 8px;
-      border-radius: 4px;
-      pointer-events: none;
-      z-index: 3;
-      white-space: nowrap;
-      display: none;
-    }
-    .ma-tooltip {
-      position: absolute;
-      top: 6px;
-      left: 8px;
-      background: rgba(15, 26, 48, 0.9);
-      border: 1px solid rgba(42, 58, 94, 0.9);
-      border-radius: 6px;
-      color: #e0e0e0;
-      font-size: 11px;
-      line-height: 1.3;
-      padding: 4px 8px;
-      white-space: nowrap;
-      pointer-events: none;
-      z-index: 3;
-      display: none;
-    }
-  `]
+  templateUrl: './chart.component.html',
+  styleUrl: './chart.component.scss',
 })
 export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @ViewChild('chartContainer') chartContainer!: ElementRef<HTMLDivElement>;
@@ -219,6 +104,8 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() openingRangeLow: number | null = null;
   @Input() showCostBasis = false;
   @Input() costBasis: number | null = null;
+  @Input() showTrailingStop = false;
+  @Input() trailingStop: number | null = null;
   @Input() peerData: LineData<Time>[] = [];
   @Input() showPeer = false;
   @Input() showSessionShade = false;
@@ -244,6 +131,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   private orHighSeries: ISeriesApi<'Line'> | null = null;
   private orLowSeries: ISeriesApi<'Line'> | null = null;
   private costBasisSeries: ISeriesApi<'Line'> | null = null;
+  private trailingStopSeries: ISeriesApi<'Line'> | null = null;
   private peerSeries: ISeriesApi<'Line'> | null = null;
   private macdSeries: ISeriesApi<'Line'> | null = null;
   private macdSignalSeries: ISeriesApi<'Line'> | null = null;
@@ -293,6 +181,9 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     }
     if ((changes['showCostBasis'] || changes['costBasis'] || changes['data']) && this.chart) {
       this.updateCostBasisLine();
+    }
+    if ((changes['showTrailingStop'] || changes['trailingStop'] || changes['data']) && this.chart) {
+      this.updateTrailingStopLine();
     }
     if ((changes['showSessionShade'] || changes['sessionShadeUntil'] || changes['data']) && this.sessionShade) {
       this.sessionShade.setState(this.showSessionShade && this.data.length > 0, this.sessionShadeUntil);
@@ -500,11 +391,23 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       crosshairMarkerVisible: false,
     });
 
+    this.trailingStopSeries = this.chart.addSeries(LineSeries, {
+      title: 'Trailing Stop',
+      color: 'rgba(220, 53, 69, 0.95)',
+      lineWidth: 2,
+      lineStyle: 2,
+      lastValueVisible: true,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    });
+
     this.updateRangeLines();
 
     this.updateOpeningRangeLines();
 
     this.updateCostBasisLine();
+
+    this.updateTrailingStopLine();
 
     this.updateMovingAverage20Series();
     this.updateMovingAverageSeries();
@@ -646,6 +549,18 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
 
     const costData: LineData<Time>[] = this.data.map(point => ({ time: point.time, value: this.costBasis! }));
     this.costBasisSeries.setData(costData);
+  }
+
+  private updateTrailingStopLine(): void {
+    if (!this.trailingStopSeries) return;
+
+    if (!this.showTrailingStop || this.trailingStop === null || this.data.length < 2) {
+      this.trailingStopSeries.setData([]);
+      return;
+    }
+
+    const stopData: LineData<Time>[] = this.data.map(point => ({ time: point.time, value: this.trailingStop! }));
+    this.trailingStopSeries.setData(stopData);
   }
 
   private updateMovingAverage20Series(): void {

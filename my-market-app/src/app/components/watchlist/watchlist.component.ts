@@ -204,1046 +204,8 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
   selector: 'app-watchlist',
   standalone: true,
   imports: [CommonModule, FormsModule, ChartComponent],
-  template: `
-    <div class="watchlist-section">
-      <h2>{{ title() }}</h2>
-      <div class="watchlist-actions">
-        <form class="watchlist-form" (submit)="addSymbol($event)">
-          <div class="input-wrapper">
-            <input
-              type="text"
-              [(ngModel)]="newSymbol"
-              name="symbol"
-              placeholder="Add ticker (e.g. AAPL)"
-              class="watchlist-input"
-              [disabled]="adding()"
-            />
-            @if (newSymbol) {
-              <button type="button" class="clear-btn" (click)="clearInput()">✕</button>
-            }
-          </div>
-          @if (isCurrentHoldings()) {
-            <input
-              type="number"
-              [(ngModel)]="newShares"
-              name="shares"
-              placeholder="Shares"
-              class="watchlist-input holding-input"
-              min="0"
-              step="0.0001"
-              [disabled]="adding()"
-            />
-            <input
-              type="number"
-              [(ngModel)]="newCostBasis"
-              name="costBasis"
-              placeholder="Cost/Share"
-              class="watchlist-input holding-input"
-              min="0"
-              step="0.01"
-              [disabled]="adding()"
-            />
-          }
-          <button type="submit" class="watchlist-btn add-btn" [disabled]="!canSubmitSymbol() || adding()">Add</button>
-        </form>
-        <div class="io-buttons">
-          <button class="watchlist-btn io-btn" (click)="exportWatchlist()">Export</button>
-          <label class="watchlist-btn io-btn import-label">
-            Import
-            <input type="file" accept=".json" (change)="importWatchlist($event)" hidden />
-          </label>
-        </div>
-      </div>
-      @if (addError()) {
-        <p class="add-error">{{ addError() }}</p>
-      }
-      @if (watchlistState().prefetchOrBusy) {
-        <p class="loading">Loading {{ title() | lowercase }}...</p>
-      } @else if (watchlistState().errorResOrException) {
-        <p class="loading">Failed to load. <button (click)="loadWatchlist()">Retry</button></p>
-      } @else if (watchlistRows().length) {
-        <table class="watchlist-table">
-          <thead>
-            <tr>
-              <th class="sortable" (click)="sortBy('symbol')">Symbol <span class="sort-icon">{{ sortIcon('symbol') }}</span></th>
-              <th class="sortable" (click)="sortBy('name')">Name <span class="sort-icon">{{ sortIcon('name') }}</span></th>
-              <th class="sortable" (click)="sortBy('sector')">Sector <span class="sort-icon">{{ sortIcon('sector') }}</span></th>
-              <th class="sortable" (click)="sortBy('price')">Price <span class="sort-icon">{{ sortIcon('price') }}</span></th>
-              <th class="sortable" (click)="sortBy('change')">Change <span class="sort-icon">{{ sortIcon('change') }}</span></th>
-              <th class="sortable" (click)="sortBy('changePercent')">Change % <span class="sort-icon">{{ sortIcon('changePercent') }}</span></th>
-              <th class="sortable" (click)="sortBy('volume')">Volume <span class="sort-icon">{{ sortIcon('volume') }}</span></th>
-              <th class="sortable" (click)="sortBy('pegy')">PEGY <span class="sort-icon">{{ sortIcon('pegy') }}</span></th>
-              <th class="sortable" (click)="sortBy('dividendYield')">Div Yield <span class="sort-icon">{{ sortIcon('dividendYield') }}</span></th>
-              @if (hasCostBasis()) {
-                <th class="sortable" (click)="sortBy('shares')">Shares <span class="sort-icon">{{ sortIcon('shares') }}</span></th>
-                <th class="sortable" (click)="sortBy('costBasis')">Cost <span class="sort-icon">{{ sortIcon('costBasis') }}</span></th>
-                <th class="sortable" (click)="sortBy('totalCost')">Total Cost <span class="sort-icon">{{ sortIcon('totalCost') }}</span></th>
-                <th class="sortable" (click)="sortBy('marketValue')">Mkt Value <span class="sort-icon">{{ sortIcon('marketValue') }}</span></th>
-                <th class="sortable" (click)="sortBy('gainLoss')">G/L <span class="sort-icon">{{ sortIcon('gainLoss') }}</span></th>
-                <th class="sortable" (click)="sortBy('gainLossPercent')">G/L % <span class="sort-icon">{{ sortIcon('gainLossPercent') }}</span></th>
-                <th class="sortable" (click)="sortBy('totalGainLoss')">Total G/L <span class="sort-icon">{{ sortIcon('totalGainLoss') }}</span></th>
-                <th class="sortable" (click)="sortBy('totalGainLossPercent')">Total G/L % <span class="sort-icon">{{ sortIcon('totalGainLossPercent') }}</span></th>
-              }
-              <th class="news-col">Docs</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (row of sortedWatchlistRows(); track row.symbol) {
-              <tr class="clickable-row" [class.expanded]="expandedSymbols().has(row.symbol)" (click)="toggleChart(row.symbol)">
-                <td class="symbol">
-                  <span class="symbol-text">{{ row.symbol }}</span>
-                </td>
-                <td class="name">{{ row.name }}</td>
-                <td class="sector">{{ row.sector }}</td>
-                <td class="price">{{ row.price !== null ? ('$' + (row.price | number:'1.2-2')) : '—' }}</td>
-                <td class="change" [class.positive]="(row.change ?? 0) >= 0" [class.negative]="(row.change ?? 0) < 0">
-                  {{ row.change !== null ? ((row.change >= 0 ? '+' : '') + (row.change | number:'1.2-2')) : '—' }}
-                </td>
-                <td class="change" [class.positive]="(row.changePercent ?? 0) >= 0" [class.negative]="(row.changePercent ?? 0) < 0">
-                  {{ row.changePercent !== null ? ((row.changePercent >= 0 ? '+' : '') + (row.changePercent | number:'1.2-2') + '%') : '—' }}
-                </td>
-                <td class="volume">{{ formatVolume(row.volume) }}</td>
-                <td class="price">
-                  @if (row.pegyLoading) {
-                    <span class="pegy-pending">…</span>
-                  } @else if (row.pegyLoaded) {
-                    <button type="button" class="pegy-btn computed" [title]="pegyTooltip" (click)="loadPegy(row.symbol); $event.stopPropagation()">{{ row.pegy !== null ? (row.pegy | number:'1.3-3') : 'N/A' }}</button>
-                  } @else {
-                    <button type="button" class="pegy-btn" [title]="pegyTooltip" (click)="loadPegy(row.symbol); $event.stopPropagation()">PEGY</button>
-                  }
-                </td>
-                <td class="price">{{ row.dividendYield !== null ? ((row.dividendYield | number:'1.2-2') + '%') : '—' }}</td>
-                @if (hasCostBasis()) {
-                  <td class="shares">{{ row.shares !== null ? (row.shares | number:'1.0-4') : '—' }}</td>
-                  <td class="price">{{ row.costBasis !== null ? ('$' + (row.costBasis | number:'1.2-2')) : '—' }}</td>
-                  <td class="price">{{ row.totalCost !== null ? ('$' + (row.totalCost | number:'1.2-2')) : '—' }}</td>
-                  <td class="price">{{ row.marketValue !== null ? ('$' + (row.marketValue | number:'1.2-2')) : '—' }}</td>
-                  <td class="change" [class.positive]="(row.gainLoss ?? 0) >= 0" [class.negative]="(row.gainLoss ?? 0) < 0">
-                    {{ row.gainLoss !== null ? ((row.gainLoss >= 0 ? '+' : '') + (row.gainLoss | number:'1.2-2')) : '—' }}
-                  </td>
-                  <td class="change" [class.positive]="(row.gainLossPercent ?? 0) >= 0" [class.negative]="(row.gainLossPercent ?? 0) < 0">
-                    {{ row.gainLossPercent !== null ? ((row.gainLossPercent >= 0 ? '+' : '') + (row.gainLossPercent | number:'1.2-2') + '%') : '—' }}
-                  </td>
-                  <td class="change" [class.positive]="(row.totalGainLoss ?? 0) >= 0" [class.negative]="(row.totalGainLoss ?? 0) < 0">
-                    {{ row.totalGainLoss !== null ? ((row.totalGainLoss >= 0 ? '+$' : '-$') + (row.totalGainLoss >= 0 ? row.totalGainLoss : -row.totalGainLoss | number:'1.2-2')) : '—' }}
-                  </td>
-                  <td class="change" [class.positive]="(row.totalGainLossPercent ?? 0) >= 0" [class.negative]="(row.totalGainLossPercent ?? 0) < 0">
-                    {{ row.totalGainLossPercent !== null ? ((row.totalGainLossPercent >= 0 ? '+' : '') + (row.totalGainLossPercent | number:'1.2-2') + '%') : '—' }}
-                  </td>
-                }
-                <td class="news-col">
-                  <button
-                    type="button"
-                    class="watchlist-btn news-btn"
-                    (click)="openNews(row.symbol); $event.stopPropagation()"
-                    [attr.aria-label]="'View news for ' + row.symbol"
-                    title="View news"
-                  >📰</button>
-                </td>
-                <td><button type="button" class="watchlist-btn remove-btn" (click)="removeSymbol(row.symbol); $event.stopPropagation()">✕</button></td>
-              </tr>
-              @if (expandedSymbols().has(row.symbol)) {
-                <tr class="chart-row">
-                  <td [attr.colspan]="hasCostBasis() ? 19 : 11">
-                    @if (row.chartLoading) {
-                      <p class="chart-loading">Loading chart...</p>
-                    } @else {
-                      <div class="chart-panel" [class.fullscreen]="fullscreenSymbol() === row.symbol">
-                        <div class="chart-toolbar">
-                          <span class="chart-title">{{ row.symbol }}<span class="chart-title__name">{{ row.name }}</span></span>
-                          @for (range of timeRanges; track range) {
-                            <button
-                              type="button"
-                              class="range-btn"
-                              [class.active]="row.range === range"
-                              (click)="selectRange(row.symbol, range)"
-                            >{{ range }}</button>
-                          }
-                          <button
-                            type="button"
-                            class="range-btn ma20-btn"
-                            [class.active]="row.showMovingAverage20"
-                            (click)="toggleMovingAverage20(row.symbol)"
-                            title="Show or hide the 20-period moving average (window scales with the selected timeframe)"
-                          >20MA</button>
-                          <button
-                            type="button"
-                            class="range-btn ma50-btn"
-                            [class.active]="row.showMovingAverage"
-                            (click)="toggleMovingAverage(row.symbol)"
-                            title="Show or hide the 50-period moving average (window scales with the selected timeframe)"
-                          >50MA</button>
-                          <button
-                            type="button"
-                            class="range-btn ma150-btn"
-                            [class.active]="row.showMovingAverage150"
-                            (click)="toggleMovingAverage150(row.symbol)"
-                            title="Show or hide the 150-period moving average (window scales with the selected timeframe)"
-                          >150MA</button>
-                          <button
-                            type="button"
-                            class="range-btn ma200-btn"
-                            [class.active]="row.showMovingAverage200"
-                            (click)="toggleMovingAverage200(row.symbol)"
-                            title="Show or hide the 200-period moving average (window scales with the selected timeframe)"
-                          >200MA</button>
-                          @if (isCurrentHoldings() && row.costBasis !== null) {
-                            <button
-                              type="button"
-                              class="range-btn cost-basis-btn"
-                              [class.active]="costBasisSymbols().has(row.symbol)"
-                              (click)="toggleCostBasis(row.symbol)"
-                              [title]="'Show or hide your cost basis ($' + (row.costBasis | number:'1.2-2') + '/share) as a line on the chart'"
-                            >Cost Basis</button>
-                          }
-                          @if (row.range === '5D') {
-                            <button
-                              type="button"
-                              class="range-btn"
-                              [class.active]="row.showRangeLevels"
-                              (click)="toggleRangeLevels(row.symbol)"
-                              title="Show previous day range lines on 5D charts"
-                            >Range High/Low</button>
-                          }
-                          @if (row.range === '1D') {
-                            <div class="split-btn">
-                              <button
-                                type="button"
-                                class="range-btn"
-                                [class.active]="openingRangeSymbols().has(row.symbol)"
-                                (click)="toggleOpeningRange(row.symbol)"
-                                title="Mark the first 15 minutes (9:30–9:45 ET) high/low"
-                              >Opening Range</button>
-                              @if (openingRangeSymbols().has(row.symbol)) {
-                                <button
-                                  type="button"
-                                  class="range-btn"
-                                  [class.active]="openingRangeNarrowSymbols().has(row.symbol)"
-                                  (click)="toggleOpeningRangeNarrow(row.symbol)"
-                                  title="Narrow the opening range band by 25% around its midpoint"
-                                >−25%</button>
-                              }
-                            </div>
-                          }
-                          <button
-                            type="button"
-                            class="range-btn macd-btn"
-                            [class.active]="macdSymbols().has(row.symbol)"
-                            (click)="toggleMacd(row.symbol)"
-                            title="Show or hide Impulse MACD (34/9) in a lower pane — flat inside the channel, impulses on momentum breakouts"
-                          >iMACD</button>
-                          <button
-                            type="button"
-                            class="range-btn div-btn div-bull"
-                            [class.active]="hasDivergence(row.symbol, 'regBull')"
-                            (click)="toggleDivergence(row.symbol, 'regBull')"
-                            title="Regular bullish divergence: price lower low + momentum higher low — possible reversal up"
-                          >Reg▲</button>
-                          <button
-                            type="button"
-                            class="range-btn div-btn div-bull"
-                            [class.active]="hasDivergence(row.symbol, 'hidBull')"
-                            (click)="toggleDivergence(row.symbol, 'hidBull')"
-                            title="Hidden bullish divergence: price higher low + momentum lower low — uptrend likely to continue"
-                          >Hid▲</button>
-                          <button
-                            type="button"
-                            class="range-btn div-btn div-bear"
-                            [class.active]="hasDivergence(row.symbol, 'regBear')"
-                            (click)="toggleDivergence(row.symbol, 'regBear')"
-                            title="Regular bearish divergence: price higher high + momentum lower high — possible reversal down"
-                          >Reg▼</button>
-                          <button
-                            type="button"
-                            class="range-btn div-btn div-bear"
-                            [class.active]="hasDivergence(row.symbol, 'hidBear')"
-                            (click)="toggleDivergence(row.symbol, 'hidBear')"
-                            title="Hidden bearish divergence: price lower high + momentum higher high — downtrend likely to continue"
-                          >Hid▼</button>
-                          @if (isEtf(row.symbol)) {
-                            <span class="etf-badge" title="ETF/Fund — no comparable peer">ETF</span>
-                          } @else {
-                            <button
-                              type="button"
-                              class="peer-btn"
-                              [class.active]="peerSymbols().has(row.symbol)"
-                              [class.loading]="row.peerLoading"
-                              (click)="togglePeer(row.symbol)"
-                              [title]="row.peerName ? ('Peer: ' + row.peerName) : (row.peerSymbol ? ('Peer: ' + row.peerSymbol) : 'Show closest peer overlay')"
-                            >{{ row.peerLoading ? '…' : (row.peerSymbol ?? 'Peer') }}</button>
-                          }
-                          <button
-                            type="button"
-                            class="range-btn news-toolbar-btn"
-                            (click)="openNews(row.symbol)"
-                            [attr.aria-label]="'View news for ' + row.symbol"
-                            title="View news"
-                          >📰 News</button>
-                          @if (row.range === '1D') {
-                            <button
-                              type="button"
-                              class="range-btn poll-btn"
-                              [class.active]="pollSymbols().has(row.symbol)"
-                              (click)="togglePoll(row.symbol)"
-                              title="Auto-refresh this 1D chart every 30s while the market is open"
-                            >⟳ Poll</button>
-                          }
-                          <button
-                            type="button"
-                            class="range-btn fullscreen-btn"
-                            (click)="toggleFullscreen(row.symbol)"
-                            [title]="fullscreenSymbol() === row.symbol ? 'Exit full screen (Esc)' : 'Expand chart to full screen'"
-                          >{{ fullscreenSymbol() === row.symbol ? '✕ Close' : '⛶ Full screen' }}</button>
-                        </div>
-                        @if (row.metricsLoading) {
-                          <div class="fundamentals fundamentals--state">Loading fundamentals…</div>
-                        } @else if (row.metrics) {
-                          <div class="fundamentals">
-                            <span class="fstat" title="Beta — volatility vs. the market (1.0 = market)"><span class="fstat__k">β</span>{{ row.metrics.beta !== null ? (row.metrics.beta | number:'1.2-2') : '—' }}</span>
-                            <span class="fstat" title="Price / Earnings (TTM)"><span class="fstat__k">P/E</span>{{ row.metrics.peTTM !== null ? (row.metrics.peTTM | number:'1.1-1') : '—' }}</span>
-                            <span class="fstat" title="Price / Sales (TTM)"><span class="fstat__k">P/S</span>{{ row.metrics.psTTM !== null ? (row.metrics.psTTM | number:'1.1-1') : '—' }}</span>
-                            <span class="fstat" title="Price / Book"><span class="fstat__k">P/B</span>{{ row.metrics.pbAnnual !== null ? (row.metrics.pbAnnual | number:'1.1-1') : '—' }}</span>
-                            <span class="fstat" title="Return on Equity (TTM)"><span class="fstat__k">ROE</span>{{ row.metrics.roeTTM !== null ? ((row.metrics.roeTTM | number:'1.0-0') + '%') : '—' }}</span>
-                            <span class="fstat" title="Net profit margin (TTM)"><span class="fstat__k">Margin</span>{{ row.metrics.netMarginTTM !== null ? ((row.metrics.netMarginTTM | number:'1.0-0') + '%') : '—' }}</span>
-                            <span class="fstat" title="Total debt / total equity"><span class="fstat__k">D/E</span>{{ row.metrics.debtToEquity !== null ? (row.metrics.debtToEquity | number:'1.2-2') : '—' }}</span>
-                            <span class="fstat" title="Current ratio (liquidity)"><span class="fstat__k">Curr</span>{{ row.metrics.currentRatio !== null ? (row.metrics.currentRatio | number:'1.2-2') : '—' }}</span>
-                            <span class="fstat" title="Revenue growth (YoY, TTM)" [class.positive]="(row.metrics.revenueGrowthYoY ?? 0) >= 0" [class.negative]="(row.metrics.revenueGrowthYoY ?? 0) < 0"><span class="fstat__k">Rev</span>{{ row.metrics.revenueGrowthYoY !== null ? ((row.metrics.revenueGrowthYoY >= 0 ? '+' : '') + (row.metrics.revenueGrowthYoY | number:'1.0-0') + '%') : '—' }}</span>
-                            <span class="fstat" title="EPS growth (5-year)" [class.positive]="(row.metrics.epsGrowth5Y ?? 0) >= 0" [class.negative]="(row.metrics.epsGrowth5Y ?? 0) < 0"><span class="fstat__k">EPS 5Y</span>{{ row.metrics.epsGrowth5Y !== null ? ((row.metrics.epsGrowth5Y >= 0 ? '+' : '') + (row.metrics.epsGrowth5Y | number:'1.0-0') + '%') : '—' }}</span>
-                            @if (row.metrics.week52Low !== null && row.metrics.week52High !== null) {
-                              <span class="fstat fstat--range" title="52-week range vs. current price">
-                                <span class="fstat__k">52W</span>
-                                <span class="range52">
-                                  <span class="range52__lo">{{ row.metrics.week52Low | number:'1.0-0' }}</span>
-                                  <span class="range52__bar">
-                                    @if (week52Position(row) !== null) {
-                                      <span class="range52__marker" [style.left.%]="week52Position(row)"></span>
-                                    }
-                                  </span>
-                                  <span class="range52__hi">{{ row.metrics.week52High | number:'1.0-0' }}</span>
-                                </span>
-                              </span>
-                            }
-                            @if (row.earningsSurprises?.length) {
-                              <span class="fstat fstat--surprise" title="Recent EPS beats/misses (oldest → newest)">
-                                <span class="fstat__k">EPS Surp.</span>
-                                @for (s of row.earningsSurprises; track s.period) {
-                                  <span class="surprise-dot" [class.beat]="(s.surprisePercent ?? 0) >= 0" [class.miss]="(s.surprisePercent ?? 0) < 0" [title]="s.period + ' · actual ' + (s.actual !== null ? s.actual : '—') + ' vs est ' + (s.estimate !== null ? s.estimate : '—') + ' (' + ((s.surprisePercent ?? 0) >= 0 ? '+' : '') + (s.surprisePercent | number:'1.1-1') + '%)'"></span>
-                                }
-                                @if (latestSurprise(row); as ls) {
-                                  <span [class.positive]="(ls.surprisePercent ?? 0) >= 0" [class.negative]="(ls.surprisePercent ?? 0) < 0">{{ (ls.surprisePercent ?? 0) >= 0 ? 'Beat' : 'Miss' }} {{ (ls.surprisePercent ?? 0) >= 0 ? '+' : '' }}{{ ls.surprisePercent | number:'1.1-1' }}%</span>
-                                }
-                              </span>
-                            }
-                            @if (row.nextEarnings) {
-                              <span class="fstat fstat--earn" [class.earn-soon]="daysUntilEarnings(row) !== null && daysUntilEarnings(row)! <= 7" [title]="'Next earnings report' + (row.nextEarnings.epsEstimate !== null ? (' · est. EPS $' + (row.nextEarnings.epsEstimate | number:'1.2-2')) : '')">
-                                <span class="fstat__k">⚡ Earnings</span>{{ row.nextEarnings.date + 'T00:00:00' | date:'MMM d' }}
-                                @if (daysUntilEarnings(row) !== null) { <span class="earn-days">({{ daysUntilEarnings(row) }}d)</span> }
-                                @if (earningsHourLabel(row.nextEarnings.hour)) { <span class="earn-hour">{{ earningsHourLabel(row.nextEarnings.hour) }}</span> }
-                              </span>
-                            }
-                          </div>
-                        }
-                        @if (row.recommendationLoading) {
-                          <div class="reco reco--state">Loading analyst ratings…</div>
-                        } @else if (row.recommendation && recoTotal(row.recommendation) > 0) {
-                          <div class="reco" [title]="'Analyst recommendations (' + row.recommendation.period + ')'">
-                            <span class="fstat__k">Analysts</span>
-                            <span class="reco-bar">
-                              @if (row.recommendation.strongBuy) {
-                                <span class="reco-seg reco-seg--sb" [style.width.%]="row.recommendation.strongBuy / recoTotal(row.recommendation) * 100" [title]="'Strong Buy: ' + row.recommendation.strongBuy"></span>
-                              }
-                              @if (row.recommendation.buy) {
-                                <span class="reco-seg reco-seg--b" [style.width.%]="row.recommendation.buy / recoTotal(row.recommendation) * 100" [title]="'Buy: ' + row.recommendation.buy"></span>
-                              }
-                              @if (row.recommendation.hold) {
-                                <span class="reco-seg reco-seg--h" [style.width.%]="row.recommendation.hold / recoTotal(row.recommendation) * 100" [title]="'Hold: ' + row.recommendation.hold"></span>
-                              }
-                              @if (row.recommendation.sell) {
-                                <span class="reco-seg reco-seg--s" [style.width.%]="row.recommendation.sell / recoTotal(row.recommendation) * 100" [title]="'Sell: ' + row.recommendation.sell"></span>
-                              }
-                              @if (row.recommendation.strongSell) {
-                                <span class="reco-seg reco-seg--ss" [style.width.%]="row.recommendation.strongSell / recoTotal(row.recommendation) * 100" [title]="'Strong Sell: ' + row.recommendation.strongSell"></span>
-                              }
-                            </span>
-                            <span class="reco-counts">
-                              <span class="reco-counts__buy">{{ row.recommendation.strongBuy + row.recommendation.buy }} Buy</span>
-                              <span class="reco-counts__hold">{{ row.recommendation.hold }} Hold</span>
-                              <span class="reco-counts__sell">{{ row.recommendation.sell + row.recommendation.strongSell }} Sell</span>
-                              <span class="reco-counts__total">({{ recoTotal(row.recommendation) }})</span>
-                            </span>
-                          </div>
-                        }
-                        <app-chart
-                          [data]="row.chartData"
-                          [color]="'#4a9eff'"
-                          [candleData]="row.candleData"
-                          [showCandles]="row.range === '1D' || row.range === '5D' || row.range === '1M'"
-                          [maData]="row.maData"
-                          [showMovingAverage]="row.showMovingAverage"
-                          [ma20Data]="row.ma20Data"
-                          [showMovingAverage20]="row.showMovingAverage20"
-                          [ma150Data]="row.ma150Data"
-                          [showMovingAverage150]="row.showMovingAverage150"
-                          [ma200Data]="row.ma200Data"
-                          [showMovingAverage200]="row.showMovingAverage200"
-                          [volumeData]="row.volumeData"
-                          [volumeProfileData]="row.volumeProfileData"
-                          [showRangeLines]="row.showRangeLevels && row.range === '5D'"
-                          [rangeHigh]="row.rangeHigh"
-                          [rangeLow]="row.rangeLow"
-                          [swingHigh]="row.swingHigh"
-                          [swingLow]="row.swingLow"
-                          [showOpeningRange]="openingRangeSymbols().has(row.symbol) && row.range === '1D'"
-                          [openingRangeHigh]="openingRangeHighFor(row)"
-                          [openingRangeLow]="openingRangeLowFor(row)"
-                          [showCostBasis]="costBasisSymbols().has(row.symbol)"
-                          [costBasis]="row.costBasis"
-                          [showSessionShade]="row.range === '1D'"
-                          [sessionShadeUntil]="row.sessionShadeUntil"
-                          [peerData]="row.peerData"
-                          [showPeer]="peerSymbols().has(row.symbol)"
-                          [showMacd]="macdSymbols().has(row.symbol)"
-                          [divergenceTypes]="divergencesFor(row.symbol)"
-                          [fillHeight]="fullscreenSymbol() === row.symbol"
-                        ></app-chart>
-                      </div>
-                    }
-                  </td>
-                </tr>
-              }
-            }
-          </tbody>
-          @if (hasCostBasis()) {
-            <tfoot>
-              <tr class="summary-row">
-                <td colspan="8">Portfolio Totals</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td class="price">{{'$'}}{{ portfolioTotalCost() | number:'1.2-2' }}</td>
-                <td class="price">{{'$'}}{{ portfolioMarketValue() | number:'1.2-2' }}</td>
-                <td></td>
-                <td></td>
-                <td class="change" [class.positive]="portfolioTotalGainLoss() >= 0" [class.negative]="portfolioTotalGainLoss() < 0">
-                  {{ portfolioTotalGainLoss() >= 0 ? '+$' : '-$' }}{{ (portfolioTotalGainLoss() >= 0 ? portfolioTotalGainLoss() : -portfolioTotalGainLoss()) | number:'1.2-2' }}
-                </td>
-                <td class="change" [class.positive]="portfolioTotalGainLossPercent() >= 0" [class.negative]="portfolioTotalGainLossPercent() < 0">
-                  {{ portfolioTotalGainLossPercent() >= 0 ? '+' : '' }}{{ portfolioTotalGainLossPercent() | number:'1.2-2' }}%
-                </td>
-                <td></td>
-              </tr>
-            </tfoot>
-          }
-        </table>
-        @if (newsPanelOpen()) {
-          <aside class="news-panel" role="dialog" aria-modal="false" [attr.aria-labelledby]="newsPanelTitleId()">
-            <header class="news-panel__header">
-              <div>
-                <p class="news-panel__eyebrow">Ticker brief</p>
-                <h3 [id]="newsPanelTitleId()">{{ newsSymbol() }} News</h3>
-              </div>
-              <button type="button" class="news-panel__close" (click)="closeNewsPanel()" aria-label="Close documentation panel">✕</button>
-            </header>
-            <div class="news-panel__content">
-              @if (newsLoading()) {
-                <p class="news-panel__state">Loading recent items...</p>
-              } @else if (newsLoadError()) {
-                <p class="news-panel__state news-panel__state--error">{{ newsLoadError() }}</p>
-              } @else if (newsArticles().length) {
-                @if (paywalledNewsCount() > 0) {
-                  <label class="news-filter">
-                    <input
-                      type="checkbox"
-                      [checked]="hidePaywalledNews()"
-                      (change)="toggleHidePaywalled()"
-                    />
-                    <span>Hide subscription-only sources ({{ paywalledNewsCount() }})</span>
-                  </label>
-                }
-                @if (visibleNewsArticles().length) {
-                  @for (article of visibleNewsArticles(); track article.url) {
-                    <article class="news-item">
-                      @if (article.image) {
-                        <img class="news-item__image" [src]="article.image" [alt]="article.headline" loading="lazy" />
-                      }
-                      <div class="news-item__body">
-                        <a
-                          class="news-item__headline"
-                          [href]="article.url"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >{{ article.headline }}</a>
-                        <p class="news-item__summary">{{ article.summary || 'No summary available.' }}</p>
-                        <div class="news-item__meta-row">
-                          <span class="news-item__source">{{ article.source }}</span>
-                          @if (isPaywalledArticle(article)) {
-                            <span
-                              class="news-item__paywall"
-                              title="This publisher usually requires a paid subscription to read the full article"
-                            >🔒 Subscription</span>
-                          }
-                          <span class="news-item__age">{{ relativeTime(article.datetime) }}</span>
-                          <a
-                            class="news-item__open"
-                            [href]="article.url"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            [attr.aria-label]="'Open story for ' + article.headline"
-                          >Open ↗</a>
-                        </div>
-                      </div>
-                    </article>
-                  }
-                } @else {
-                  <p class="news-panel__state">All recent items are subscription-only. <button type="button" class="news-panel__link-btn" (click)="toggleHidePaywalled()">Show them</button></p>
-                }
-              } @else {
-                <p class="news-panel__state">No recent news found for {{ newsSymbol() }}.</p>
-              }
-            </div>
-          </aside>
-        }
-      } @else {
-        <p class="loading">No items found.</p>
-      }
-    </div>
-  `,
-  styles: [`
-    .watchlist-section {
-      margin-top: 32px;
-    }
-    h2 {
-      color: #e0e0e0;
-      margin: 0 0 20px;
-      font-size: 22px;
-    }
-    .loading {
-      color: #8892b0;
-      font-size: 14px;
-    }
-    .watchlist-form {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .input-wrapper {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-    }
-    .input-wrapper .watchlist-input {
-      padding-right: 28px;
-    }
-    .clear-btn {
-      position: absolute;
-      right: 6px;
-      background: transparent;
-      border: none;
-      color: #8892b0;
-      font-size: 13px;
-      cursor: pointer;
-      padding: 2px 4px;
-      line-height: 1;
-    }
-    .clear-btn:hover {
-      color: #dc3545;
-    }
-    .add-error {
-      color: #dc3545;
-      font-size: 13px;
-      margin: -8px 0 12px;
-    }
-    .watchlist-actions {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-    .io-buttons {
-      display: flex;
-      gap: 6px;
-    }
-    .io-btn {
-      background: #1a2744;
-      color: #8892b0;
-      border: 1px solid #2a3a5e;
-    }
-    .io-btn:hover {
-      color: #e0e0e0;
-      border-color: #4a9eff;
-    }
-    .import-label {
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-    }
-    .watchlist-input {
-      background: #0f1a30;
-      border: 1px solid #2a3a5e;
-      border-radius: 6px;
-      color: #e0e0e0;
-      padding: 8px 12px;
-      font-size: 14px;
-      width: 200px;
-      outline: none;
-    }
-    .holding-input {
-      width: 140px;
-    }
-    .watchlist-input:focus {
-      border-color: #4a9eff;
-    }
-    .watchlist-input::placeholder {
-      color: #5a6a8a;
-    }
-    .watchlist-btn {
-      border: none;
-      border-radius: 6px;
-      padding: 8px 14px;
-      font-size: 13px;
-      cursor: pointer;
-      font-weight: 500;
-    }
-    .watchlist-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .add-btn {
-      background: #28a745;
-      color: #fff;
-    }
-    .add-btn:hover:not(:disabled) {
-      background: #218838;
-    }
-    .remove-btn {
-      background: transparent;
-      color: #dc3545;
-      padding: 4px 8px;
-      font-size: 14px;
-    }
-    .remove-btn:hover {
-      background: rgba(220, 53, 69, 0.1);
-    }
-    .watchlist-table {
-      width: 100%;
-      border-collapse: collapse;
-      background: #16213e;
-      border-radius: 10px;
-      border: 1px solid #2a3a5e;
-    }
-    .watchlist-table th {
-      text-align: left;
-      padding: 12px 16px;
-      color: #8892b0;
-      font-size: 13px;
-      font-weight: 600;
-      border-bottom: 1px solid #2a3a5e;
-      background: #0f1a30;
-      position: sticky;
-      top: 49px;
-      z-index: 40;
-    }
-    .watchlist-table th.sortable {
-      cursor: pointer;
-      user-select: none;
-    }
-    .watchlist-table th.sortable:hover {
-      color: #e0e0e0;
-    }
-    .sort-icon {
-      font-size: 11px;
-      margin-left: 4px;
-      opacity: 0.7;
-    }
-    .watchlist-table td {
-      padding: 12px 16px;
-      color: #e0e0e0;
-      font-size: 14px;
-      border-bottom: 1px solid #2a3a5e;
-    }
-    .watchlist-table tr:last-child td {
-      border-bottom: none;
-    }
-    .watchlist-table .symbol {
-      font-weight: 600;
-      color: #4a9eff;
-    }
-    .watchlist-table .name {
-      color: #a0a0b0;
-    }
-    .watchlist-table .sector {
-      color: #8892b0;
-      font-size: 13px;
-    }
-    .watchlist-table .positive {
-      color: #28a745;
-    }
-    .watchlist-table .negative {
-      color: #dc3545;
-    }
-    .range-btn {
-      background: #0f1a30;
-      border: 1px solid #2a3a5e;
-      border-radius: 6px;
-      color: #8892b0;
-      padding: 6px 12px;
-      font-size: 13px;
-      cursor: pointer;
-      font-weight: 500;
-      transition: all 0.15s;
-    }
-    .range-btn:hover {
-      color: #e0e0e0;
-      border-color: #4a9eff;
-    }
-    .range-btn.active {
-      background: #4a9eff;
-      color: #fff;
-      border-color: #4a9eff;
-    }
-    .range-btn.div-btn {
-      padding: 6px 8px;
-      font-size: 12px;
-    }
-    .range-btn.div-btn.div-bull {
-      border-color: rgba(0, 200, 83, 0.5);
-      color: #00c853;
-    }
-    .range-btn.div-btn.div-bull:hover {
-      border-color: #00c853;
-      color: #4be08a;
-    }
-    .range-btn.div-btn.div-bull.active {
-      background: #00c853;
-      border-color: #00c853;
-      color: #06231a;
-    }
-    .range-btn.div-btn.div-bear {
-      border-color: rgba(213, 0, 0, 0.5);
-      color: #ff6b6b;
-    }
-    .range-btn.div-btn.div-bear:hover {
-      border-color: #d50000;
-      color: #ff9a9a;
-    }
-    .range-btn.div-btn.div-bear.active {
-      background: #d50000;
-      border-color: #d50000;
-      color: #fff;
-    }
-    .range-btn.ma50-btn {
-      border-color: rgba(240, 192, 64, 0.55);
-      color: #f0c040;
-    }
-    .range-btn.ma50-btn:hover {
-      border-color: #f0c040;
-      color: #f6d16d;
-    }
-    .range-btn.ma50-btn.active {
-      background: #f0c040;
-      border-color: #f0c040;
-      color: #1a1a2e;
-    }
-    .range-btn.ma20-btn {
-      border-color: rgba(77, 208, 225, 0.55);
-      color: #4dd0e1;
-    }
-    .range-btn.ma20-btn:hover {
-      border-color: #4dd0e1;
-      color: #7ee0ec;
-    }
-    .range-btn.ma20-btn.active {
-      background: #4dd0e1;
-      border-color: #4dd0e1;
-      color: #1a1a2e;
-    }
-    .range-btn.ma150-btn {
-      border-color: rgba(176, 124, 255, 0.6);
-      color: #b07cff;
-    }
-    .range-btn.ma150-btn:hover {
-      border-color: #b07cff;
-      color: #c7a0ff;
-    }
-    .range-btn.ma150-btn.active {
-      background: #b07cff;
-      border-color: #b07cff;
-      color: #fff;
-    }
-    .range-btn.ma200-btn {
-      border-color: rgba(236, 64, 122, 0.6);
-      color: #ec407a;
-    }
-    .range-btn.ma200-btn:hover {
-      border-color: #ec407a;
-      color: #f27ca4;
-    }
-    .range-btn.ma200-btn.active {
-      background: #ec407a;
-      border-color: #ec407a;
-      color: #fff;
-    }
-    .range-btn.cost-basis-btn {
-      border-color: rgba(74, 158, 255, 0.55);
-      color: #4a9eff;
-    }
-    .range-btn.cost-basis-btn:hover {
-      border-color: #4a9eff;
-      color: #7bb8ff;
-    }
-    .range-btn.cost-basis-btn.active {
-      background: #4a9eff;
-      border-color: #4a9eff;
-      color: #fff;
-    }
-    .clickable-row {
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    .clickable-row:hover {
-      background: rgba(74, 158, 255, 0.08);
-    }
-    .clickable-row.expanded {
-      background: rgba(74, 158, 255, 0.12);
-    }
-    .chart-row td {
-      padding: 0 16px 12px !important;
-      border-bottom: 1px solid #2a3a5e;
-    }
-    .chart-loading {
-      color: #8892b0;
-      font-size: 13px;
-      padding: 20px 0;
-      text-align: center;
-    }
-    .chart-panel {
-      display: flex;
-      flex-direction: column;
-    }
-    .chart-panel.fullscreen {
-      position: fixed;
-      inset: 0;
-      z-index: 1000;
-      background: #1a1a2e;
-      padding: 12px 16px 16px;
-      gap: 8px;
-      overflow: hidden;
-    }
-    .chart-panel.fullscreen app-chart {
-      flex: 1;
-      min-height: 0;
-      display: block;
-    }
-    .chart-toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: flex-start;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 0 4px;
-    }
-    .chart-toolbar .chart-title {
-      font-weight: 700;
-      color: #4a9eff;
-      font-size: 15px;
-      margin-right: 4px;
-    }
-    .chart-toolbar .chart-title__name {
-      color: #8892b0;
-      font-weight: 500;
-      font-size: 12px;
-      margin-left: 6px;
-    }
-    .chart-toolbar .etf-badge {
-      border: 1px solid #8892b0;
-      border-radius: 5px;
-      color: #8892b0;
-      padding: 1px 6px;
-      font-size: 11px;
-      font-weight: 600;
-      background: rgba(136, 146, 176, 0.08);
-    }
-    .chart-toolbar .news-toolbar-btn {
-      margin-left: auto;
-      border-color: rgba(240, 192, 64, 0.55);
-      color: #f0c040;
-    }
-    .chart-toolbar .news-toolbar-btn:hover {
-      border-color: #f0c040;
-      color: #f6d16d;
-    }
-    .chart-toolbar .poll-btn {
-      border-color: rgba(40, 167, 69, 0.55);
-      color: #46c76a;
-    }
-    .chart-toolbar .poll-btn:hover {
-      border-color: #28a745;
-      color: #6bd98a;
-    }
-    .chart-toolbar .poll-btn.active {
-      background: #28a745;
-      border-color: #28a745;
-      color: #fff;
-    }
-    .chart-toolbar .fullscreen-btn {
-      border-color: rgba(74, 158, 255, 0.55);
-      color: #4a9eff;
-    }
-    .chart-toolbar .fullscreen-btn:hover {
-      border-color: #4a9eff;
-      color: #7bb8ff;
-    }
-    .fundamentals {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      padding: 2px 0 8px;
-    }
-    .fundamentals--state {
-      color: #8892b0;
-      font-size: 12px;
-      padding: 4px 0 10px;
-    }
-    .fstat {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      background: #0f1a30;
-      border: 1px solid #2a3a5e;
-      border-radius: 6px;
-      padding: 3px 8px;
-      font-size: 12px;
-      color: #e0e0e0;
-      white-space: nowrap;
-    }
-    .fstat__k {
-      color: #8892b0;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.02em;
-    }
-    .fstat.positive { color: #28a745; }
-    .fstat.negative { color: #dc3545; }
-    .fstat--earn {
-      border-color: rgba(240, 192, 64, 0.5);
-    }
-    .fstat--earn.earn-soon {
-      border-color: #f0c040;
-      background: rgba(240, 192, 64, 0.12);
-    }
-    .earn-days { color: #f0c040; font-weight: 600; }
-    .earn-hour { color: #8892b0; font-size: 10px; font-weight: 600; }
-    .fstat--surprise { gap: 4px; }
-    .surprise-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      display: inline-block;
-    }
-    .surprise-dot.beat { background: #28a745; }
-    .surprise-dot.miss { background: #dc3545; }
-    .fstat--range {
-      gap: 8px;
-    }
-    .range52 {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      color: #8892b0;
-    }
-    .range52__bar {
-      position: relative;
-      width: 70px;
-      height: 4px;
-      border-radius: 2px;
-      background: linear-gradient(to right, #dc3545, #f0c040, #28a745);
-    }
-    .range52__marker {
-      position: absolute;
-      top: -3px;
-      width: 2px;
-      height: 10px;
-      background: #e0e0e0;
-      border-radius: 1px;
-      transform: translateX(-1px);
-    }
-    .reco {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 0 0 10px;
-      font-size: 12px;
-    }
-    .reco--state {
-      color: #8892b0;
-    }
-    .reco-bar {
-      display: inline-flex;
-      width: 180px;
-      height: 10px;
-      border-radius: 5px;
-      overflow: hidden;
-      border: 1px solid #2a3a5e;
-      background: #0f1a30;
-    }
-    .reco-seg { height: 100%; }
-    .reco-seg--sb { background: #1a7f37; }
-    .reco-seg--b  { background: #28a745; }
-    .reco-seg--h  { background: #8892b0; }
-    .reco-seg--s  { background: #dc3545; }
-    .reco-seg--ss { background: #a11221; }
-    .reco-counts {
-      display: inline-flex;
-      gap: 8px;
-      align-items: center;
-      color: #8892b0;
-    }
-    .reco-counts__buy { color: #28a745; font-weight: 600; }
-    .reco-counts__hold { color: #a0a0b0; font-weight: 600; }
-    .reco-counts__sell { color: #dc3545; font-weight: 600; }
-    .reco-counts__total { color: #5a6a8a; }
-    .split-btn {
-      display: inline-flex;
-    }
-    .split-btn > .range-btn {
-      border-radius: 0;
-    }
-    .split-btn > .range-btn:first-child {
-      border-radius: 6px 0 0 6px;
-    }
-    .split-btn > .range-btn:last-child {
-      border-radius: 0 6px 6px 0;
-      margin-left: -1px;
-    }
-    .split-btn > .range-btn:only-child {
-      border-radius: 6px;
-      margin-left: 0;
-    }
-    .split-btn > .range-btn.active {
-      position: relative;
-      z-index: 1;
-    }
-    .shares {
-      color: #a0a0b0;
-      font-size: 13px;
-    }
-    .volume {
-      color: #8892b0;
-      font-size: 13px;
-    }
-    .summary-row td {
-      padding: 12px 16px;
-      font-weight: 700;
-      color: #e0e0e0;
-      border-top: 2px solid #4a9eff;
-      background: #0f1a30;
-      font-size: 14px;
-    }
-  `]
+  templateUrl: './watchlist.component.html',
+  styleUrl: './watchlist.component.scss',
 })
 export class WatchlistComponent implements OnInit, OnDestroy {
   private static readonly POLL_MS = 30_000;
@@ -1315,6 +277,10 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   openingRangeSymbols = signal<Set<string>>(new Set());
   openingRangeNarrowSymbols = signal<Set<string>>(new Set());
   costBasisSymbols = signal<Set<string>>(new Set());
+  trailingStops = signal<Map<string, { pct: number; peak: number; stop: number; expiry: number }>>(new Map());
+  readonly trailingStopForm = signal<{ symbol: string; price: number } | null>(null);
+  tsPctInput = '';
+  tsExpiryInput = '';
   readonly newsPanelOpen = signal(false);
   readonly newsSymbol = signal<string>('');
   readonly newsArticles = signal<FinnhubNewsArticle[]>([]);
@@ -1430,6 +396,40 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     return `watchlist_${this.watchlistName()}`;
   }
 
+  private get trailingStopStorageKey(): string {
+    return `trailing_stops_${this.watchlistName()}`;
+  }
+
+  /** Restores persisted trailing stops, dropping any that have already expired. */
+  private loadTrailingStops(): void {
+    const raw = localStorage.getItem(this.trailingStopStorageKey);
+    if (!raw) { this.trailingStops.set(new Map()); return; }
+    let parsed: Record<string, { pct: number; peak: number; stop: number; expiry: number }>;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      this.trailingStops.set(new Map());
+      return;
+    }
+    const now = Date.now();
+    const map = new Map<string, { pct: number; peak: number; stop: number; expiry: number }>();
+    for (const [symbol, cfg] of Object.entries(parsed)) {
+      if (cfg && typeof cfg.pct === 'number' && typeof cfg.expiry === 'number' && cfg.expiry > now) {
+        map.set(symbol, cfg);
+      }
+    }
+    this.trailingStops.set(map);
+    this.saveTrailingStops();
+  }
+
+  private saveTrailingStops(): void {
+    const obj: Record<string, { pct: number; peak: number; stop: number; expiry: number }> = {};
+    for (const [symbol, cfg] of this.trailingStops()) {
+      obj[symbol] = cfg;
+    }
+    localStorage.setItem(this.trailingStopStorageKey, JSON.stringify(obj));
+  }
+
   private loadFromStorage(): WatchlistEntry[] | null {
     const raw = localStorage.getItem(this.storageKey);
     if (!raw) return null;
@@ -1478,6 +478,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         }
       }
       this.symbols.set([...initialSymbols]);
+      this.loadTrailingStops();
 
       if (!initialSymbols.length) {
         this.watchlistRows.set([]);
@@ -1720,6 +721,8 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     this.costBasisMap.delete(symbol);
     this.sharesMap.delete(symbol);
     this.expandedSymbols.update(s => { const next = new Set(s); next.delete(symbol); return next; });
+    this.trailingStops.update(m => { const next = new Map(m); next.delete(symbol); return next; });
+    this.saveTrailingStops();
     this.saveToStorage();
   }
 
@@ -2108,6 +1111,112 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Current computed trailing stop level for a symbol (null if none set). */
+  trailingStopLevel(symbol: string): number | null {
+    return this.trailingStops().get(symbol)?.stop ?? null;
+  }
+
+  /** Expiry (epoch ms) of a symbol's trailing stop (null if none set). */
+  trailingStopExpiry(symbol: string): number | null {
+    return this.trailingStops().get(symbol)?.expiry ?? null;
+  }
+
+  /** Trailing stop percentage for a symbol (null if none set). */
+  trailingStopPct(symbol: string): number | null {
+    return this.trailingStops().get(symbol)?.pct ?? null;
+  }
+
+  /** Prompts (via a modal with a calendar) for a trailing stop percentage and expiry, or clears an existing one. */
+  toggleTrailingStop(symbol: string): void {
+    if (this.trailingStops().has(symbol)) {
+      this.trailingStops.update(m => { const next = new Map(m); next.delete(symbol); return next; });
+      this.saveTrailingStops();
+      return;
+    }
+    const row = this.watchlistRows().find(r => r.symbol === symbol);
+    const price = row?.price ?? (row?.chartData.length ? row.chartData[row.chartData.length - 1].value : null);
+    if (price === null || price === undefined) {
+      this.notificationService.showError('Current price unavailable; cannot set a trailing stop.');
+      return;
+    }
+    this.tsPctInput = '';
+    this.tsExpiryInput = new Date(Date.now() + 30 * 86_400_000).toLocaleDateString('en-CA');
+    this.trailingStopForm.set({ symbol, price });
+  }
+
+  /** Earliest selectable expiry (tomorrow) for the date picker. */
+  minExpiryDate(): string {
+    return new Date(Date.now() + 86_400_000).toLocaleDateString('en-CA');
+  }
+
+  cancelTrailingStop(): void {
+    this.trailingStopForm.set(null);
+  }
+
+  /** Validates the modal inputs and creates the persisted trailing stop. */
+  confirmTrailingStop(): void {
+    const form = this.trailingStopForm();
+    if (!form) return;
+    const pct = Number(this.tsPctInput);
+    if (!Number.isFinite(pct) || pct <= 0 || pct >= 100) {
+      this.notificationService.showError('Enter a valid trailing stop percentage between 0 and 100.');
+      return;
+    }
+    if (!this.tsExpiryInput) {
+      this.notificationService.showError('Choose an expiry date.');
+      return;
+    }
+    const expiry = new Date(`${this.tsExpiryInput}T23:59:59`).getTime();
+    if (!Number.isFinite(expiry) || expiry <= Date.now()) {
+      this.notificationService.showError('Choose a future expiry date.');
+      return;
+    }
+    const { symbol, price } = form;
+    const stop = +(price * (1 - pct / 100)).toFixed(4);
+    this.trailingStops.update(m => {
+      const next = new Map(m);
+      next.set(symbol, { pct, peak: price, stop, expiry });
+      return next;
+    });
+    this.saveTrailingStops();
+    this.trailingStopForm.set(null);
+    if (!this.expandedSymbols().has(symbol)) {
+      this.expandedSymbols.update(s => new Set(s).add(symbol));
+      this.loadChart(symbol);
+      this.loadMetrics(symbol);
+      this.loadRecommendation(symbol);
+      this.loadEarnings(symbol);
+    }
+  }
+
+  /** Ratchets the stop up with new highs; removes it (from storage) when the price crosses it or it expires. */
+  private evaluateTrailingStop(symbol: string, latestPrice: number): void {
+    const config = this.trailingStops().get(symbol);
+    if (!config) return;
+    if (Date.now() >= config.expiry) {
+      this.trailingStops.update(m => { const next = new Map(m); next.delete(symbol); return next; });
+      this.saveTrailingStops();
+      this.notificationService.showInfo(`${symbol} trailing stop expired.`);
+      return;
+    }
+    const peak = Math.max(config.peak, latestPrice);
+    const stop = +(peak * (1 - config.pct / 100)).toFixed(4);
+    if (latestPrice <= stop) {
+      this.trailingStops.update(m => { const next = new Map(m); next.delete(symbol); return next; });
+      this.saveTrailingStops();
+      this.notificationService.showError(`${symbol} hit its ${config.pct}% trailing stop at $${stop.toFixed(2)} (price $${latestPrice.toFixed(2)}).`);
+      return;
+    }
+    if (peak !== config.peak || stop !== config.stop) {
+      this.trailingStops.update(m => {
+        const next = new Map(m);
+        next.set(symbol, { ...config, peak, stop });
+        return next;
+      });
+      this.saveTrailingStops();
+    }
+  }
+
   async openNews(symbol: string): Promise<void> {
     const normalizedSymbol = symbol.trim().toUpperCase();
     if (!normalizedSymbol) return;
@@ -2320,6 +1429,9 @@ export class WatchlistComponent implements OnInit, OnDestroy {
           sessionShadeUntil,
         } : r
       ));
+      if (this.trailingStops().has(symbol) && chartData.length) {
+        this.evaluateTrailingStop(symbol, chartData[chartData.length - 1].value);
+      }
       if (this.peerSymbols().has(symbol)) {
         this.loadPeer(symbol);
       }
