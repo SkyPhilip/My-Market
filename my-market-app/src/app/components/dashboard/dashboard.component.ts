@@ -5,8 +5,9 @@ import { ChartComponent } from '../chart/chart.component';
 import { WatchlistComponent } from '../watchlist/watchlist.component';
 import { WatchlistService } from '../../services/watchlist.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
-import { AlpacaBarsResponse, AlpacaErrorBody, AlpacaSnapshotsResponse } from '../../models/alpaca.models';
+import { AlpacaBarsResponse, AlpacaErrorBody, AlpacaSnapshot, AlpacaSnapshotsResponse } from '../../models/alpaca.models';
 import { LineData, Time } from 'lightweight-charts';
+import { firstValueFrom } from 'rxjs';
 
 type TimeRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'All';
 
@@ -93,6 +94,15 @@ const RANGE_CONFIGS: Record<TimeRange, RangeConfig> = {
   'All': { timeframe: '1Month', getStart: () => '2000-01-01' },
 };
 
+interface HoldingRow {
+  symbol: string;
+  name: string;
+  price: number | null;
+  change: number | null;
+  changePercent: number | null;
+  volume: number | null;
+}
+
 interface IndexCard {
   symbol: string;
   name: string;
@@ -131,7 +141,39 @@ export class DashboardComponent implements OnInit, OnDestroy {
     { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#ffc107' },
   ];
 
+  // Top 6 constituents per index ETF (symbol + company name), roughly by weight.
+  private static readonly TOP_HOLDINGS: Record<string, ReadonlyArray<{ symbol: string; name: string }>> = {
+    DIA: [
+      { symbol: 'GS', name: 'Goldman Sachs' },
+      { symbol: 'MSFT', name: 'Microsoft' },
+      { symbol: 'HD', name: 'Home Depot' },
+      { symbol: 'CAT', name: 'Caterpillar' },
+      { symbol: 'SHW', name: 'Sherwin-Williams' },
+      { symbol: 'V', name: 'Visa' },
+    ],
+    SPY: [
+      { symbol: 'AAPL', name: 'Apple' },
+      { symbol: 'MSFT', name: 'Microsoft' },
+      { symbol: 'NVDA', name: 'NVIDIA' },
+      { symbol: 'AMZN', name: 'Amazon' },
+      { symbol: 'META', name: 'Meta Platforms' },
+      { symbol: 'GOOGL', name: 'Alphabet' },
+    ],
+    QQQ: [
+      { symbol: 'AAPL', name: 'Apple' },
+      { symbol: 'MSFT', name: 'Microsoft' },
+      { symbol: 'NVDA', name: 'NVIDIA' },
+      { symbol: 'AMZN', name: 'Amazon' },
+      { symbol: 'AVGO', name: 'Broadcom' },
+      { symbol: 'META', name: 'Meta Platforms' },
+    ],
+  };
+
   readonly indices: WritableSignal<IndexCard[]> = signal<IndexCard[]>(DashboardComponent.CARD_DEFAULTS);
+
+  readonly openHoldings = signal<Set<string>>(new Set());
+  readonly holdingsLoading = signal<Set<string>>(new Set());
+  readonly holdingsData = signal<Record<string, HoldingRow[]>>({});
 
   readonly timeRanges: TimeRange[] = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'All'];
   readonly selectedRange = signal<TimeRange>('1D');
@@ -196,6 +238,60 @@ export class DashboardComponent implements OnInit, OnDestroy {
   inWatchList(symbol: string): boolean {
     this.watchlistService.version('Watch List')(); // reactive dependency
     return this.watchlistService.has('Watch List', symbol);
+  }
+
+  isHoldingsOpen(symbol: string): boolean {
+    return this.openHoldings().has(symbol);
+  }
+
+  isHoldingsLoading(symbol: string): boolean {
+    return this.holdingsLoading().has(symbol);
+  }
+
+  holdingsFor(symbol: string): HoldingRow[] {
+    return this.holdingsData()[symbol] ?? [];
+  }
+
+  toggleHoldings(symbol: string): void {
+    const next = new Set(this.openHoldings());
+    if (next.has(symbol)) {
+      next.delete(symbol);
+    } else {
+      next.add(symbol);
+      if (!this.holdingsData()[symbol]) {
+        this.loadHoldings(symbol);
+      }
+    }
+    this.openHoldings.set(next);
+  }
+
+  private async loadHoldings(symbol: string): Promise<void> {
+    const holdings = DashboardComponent.TOP_HOLDINGS[symbol];
+    if (!holdings?.length) return;
+
+    this.holdingsLoading.update(set => new Set(set).add(symbol));
+    try {
+      const res = await firstValueFrom(this.alpacaService.getSnapshots(holdings.map(h => h.symbol)));
+      const snapshots = res.body ?? {};
+      const rows: HoldingRow[] = holdings.map(h => {
+        const snap: AlpacaSnapshot | undefined = snapshots[h.symbol];
+        const price = snap?.latestTrade?.p ?? snap?.minuteBar?.c ?? snap?.dailyBar?.c ?? null;
+        const prevClose = snap?.prevDailyBar?.c ?? null;
+        const change = price !== null && prevClose !== null ? +(price - prevClose).toFixed(2) : null;
+        const changePercent = change !== null && prevClose ? +((change / prevClose) * 100).toFixed(2) : null;
+        const volume = snap?.dailyBar?.v ?? null;
+        return { symbol: h.symbol, name: h.name, price, change, changePercent, volume };
+      });
+      this.holdingsData.update(data => ({ ...data, [symbol]: rows }));
+    } catch {
+      // Holdings data is supplementary; leave the table empty on failure.
+    } finally {
+      this.holdingsLoading.update(set => {
+        const next = new Set(set);
+        next.delete(symbol);
+        return next;
+      });
+    }
   }
 
   private async loadMarketSummary(): Promise<void> {

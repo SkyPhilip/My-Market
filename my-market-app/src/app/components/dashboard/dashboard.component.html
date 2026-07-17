@@ -82,6 +82,74 @@
               [swingHigh]="card.swingHigh"
               [swingLow]="card.swingLow"
             ></app-chart>
+            <button
+              type="button"
+              class="holdings-toggle"
+              [class.open]="isHoldingsOpen(card.symbol)"
+              (click)="toggleHoldings(card.symbol)"
+            >
+              {{ isHoldingsOpen(card.symbol) ? 'Hide' : 'Show' }} top holdings
+            </button>
+            @if (isHoldingsOpen(card.symbol)) {
+              <div class="holdings">
+                @if (isHoldingsLoading(card.symbol)) {
+                  <p class="loading">Loading holdings...</p>
+                } @else if (holdingsFor(card.symbol).length) {
+                  <table class="holdings-table">
+                    <thead>
+                      <tr>
+                        <th>Symbol</th>
+                        <th>Company</th>
+                        <th class="num">Price</th>
+                        <th class="num">Change</th>
+                        <th class="num">Volume</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (row of holdingsFor(card.symbol); track row.symbol) {
+                        <tr>
+                          <td class="sym">{{ row.symbol }}</td>
+                          <td class="company">{{ row.name }}</td>
+                          <td class="num">
+                            @if (row.price !== null) {
+                              {{'$'}}{{ row.price | number:'1.2-2' }}
+                            } @else { — }
+                          </td>
+                          <td class="num">
+                            @if (row.change !== null) {
+                              <span [class.positive]="row.change >= 0" [class.negative]="row.change < 0">
+                                {{ row.change >= 0 ? '+' : '' }}{{ row.change | number:'1.2-2' }}
+                                @if (row.changePercent !== null) {
+                                  ({{ row.changePercent >= 0 ? '+' : '' }}{{ row.changePercent | number:'1.2-2' }}%)
+                                }
+                              </span>
+                            } @else { — }
+                          </td>
+                          <td class="num">
+                            @if (row.volume !== null) {
+                              {{ row.volume | number:'1.0-0' }}
+                            } @else { — }
+                          </td>
+                          <td class="num">
+                            <button
+                              type="button"
+                              class="add-index-btn"
+                              [class.added]="inWatchList(row.symbol)"
+                              [disabled]="inWatchList(row.symbol)"
+                              (click)="addToWatchList(row.symbol)"
+                              [title]="inWatchList(row.symbol) ? 'In Watch List' : 'Add to Watch List'"
+                            >{{ inWatchList(row.symbol) ? '✓' : '+' }}</button>
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                } @else {
+                  <p class="loading">No holdings data available.</p>
+                }
+              </div>
+            }
           </div>
         }
       </div>

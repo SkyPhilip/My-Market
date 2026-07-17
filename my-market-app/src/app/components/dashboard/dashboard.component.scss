@@ -135,4 +135,64 @@
       border-color: #b07cff;
       color: #fff;
     }
+    .holdings-toggle {
+      margin-top: 12px;
+      width: 100%;
+      background: #0f1a30;
+      border: 1px solid #2a3a5e;
+      border-radius: 6px;
+      color: #8892b0;
+      padding: 7px 12px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .holdings-toggle:hover {
+      color: #e0e0e0;
+      border-color: #4a9eff;
+    }
+    .holdings-toggle.open {
+      color: #e0e0e0;
+      border-color: #4a9eff;
+    }
+    .holdings {
+      margin-top: 10px;
+    }
+    .holdings-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .holdings-table th {
+      text-align: left;
+      color: #8892b0;
+      font-weight: 600;
+      padding: 6px 8px;
+      border-bottom: 1px solid #2a3a5e;
+    }
+    .holdings-table th.num,
+    .holdings-table td.num {
+      text-align: right;
+    }
+    .holdings-table td {
+      color: #e0e0e0;
+      padding: 6px 8px;
+      border-bottom: 1px solid #1e2a44;
+    }
+    .holdings-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+    .holdings-table td.sym {
+      font-weight: 700;
+    }
+    .holdings-table td.company {
+      color: #b8c0d8;
+    }
+    .holdings-table .positive {
+      color: #28a745;
+    }
+    .holdings-table .negative {
+      color: #dc3545;
+    }
   
