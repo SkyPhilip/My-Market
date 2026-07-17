@@ -92,7 +92,17 @@
             </button>
             @if (isHoldingsOpen(card.symbol)) {
               <div class="holdings">
-                @if (isHoldingsLoading(card.symbol)) {
+                <div class="holdings__toolbar">
+                  <span class="holdings__title">Top holdings</span>
+                  <button
+                    type="button"
+                    class="holdings-refresh"
+                    [disabled]="isHoldingsLoading(card.symbol)"
+                    (click)="refreshHoldings(card.symbol)"
+                    title="Refresh price, change and volume"
+                  >⟳ Refresh</button>
+                </div>
+                @if (isHoldingsLoading(card.symbol) && !holdingsFor(card.symbol).length) {
                   <p class="loading">Loading holdings...</p>
                 } @else if (holdingsFor(card.symbol).length) {
                   <table class="holdings-table">

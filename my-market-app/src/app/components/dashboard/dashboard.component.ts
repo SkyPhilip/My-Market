@@ -201,6 +201,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.refreshInterval = setInterval(() => {
       this.loadMarketSummary();
       this.loadCharts();
+      this.refreshOpenHoldings();
     }, DashboardComponent.REFRESH_MS);
   }
 
@@ -258,11 +259,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
       next.delete(symbol);
     } else {
       next.add(symbol);
-      if (!this.holdingsData()[symbol]) {
-        this.loadHoldings(symbol);
-      }
+      // Re-fetch on every open so prices/volume are current.
+      this.loadHoldings(symbol);
     }
     this.openHoldings.set(next);
+  }
+
+  /** Manual refresh of a single open holdings table (price/change/volume). */
+  refreshHoldings(symbol: string): void {
+    this.loadHoldings(symbol);
+  }
+
+  /** Re-fetch every currently expanded holdings table (used by the auto-refresh interval). */
+  private refreshOpenHoldings(): void {
+    for (const symbol of this.openHoldings()) {
+      this.loadHoldings(symbol);
+    }
   }
 
   private async loadHoldings(symbol: string): Promise<void> {

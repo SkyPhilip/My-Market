@@ -159,6 +159,38 @@
     .holdings {
       margin-top: 10px;
     }
+    .holdings__toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .holdings__title {
+      color: #8892b0;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .holdings-refresh {
+      background: #0f1a30;
+      border: 1px solid #2a3a5e;
+      border-radius: 6px;
+      color: #8892b0;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .holdings-refresh:hover:not(:disabled) {
+      color: #e0e0e0;
+      border-color: #4a9eff;
+    }
+    .holdings-refresh:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
     .holdings-table {
       width: 100%;
       border-collapse: collapse;
