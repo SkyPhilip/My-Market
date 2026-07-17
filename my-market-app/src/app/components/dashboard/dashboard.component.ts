@@ -132,6 +132,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private alpacaService = inject(AlpacaService);
   private watchlistService = inject(WatchlistService);
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
+  private refreshWasOpen = false;
   private static readonly REFRESH_MS = 15 * 60 * 1000;
 
   private static readonly SYMBOLS = ['DIA', 'SPY', 'QQQ'] as const;
@@ -198,17 +199,30 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.loadMarketSummary();
     this.loadCharts();
-    this.refreshInterval = setInterval(() => {
-      this.loadMarketSummary();
-      this.loadCharts();
-      this.refreshOpenHoldings();
-    }, DashboardComponent.REFRESH_MS);
+    this.refreshInterval = setInterval(() => this.refreshTick(), DashboardComponent.REFRESH_MS);
   }
 
   ngOnDestroy(): void {
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
     }
+  }
+
+  /** 15-minute page refresh. Runs while the market is open, plus one final pass just after the
+   *  close so the settled closing values land; otherwise stays idle after hours. */
+  private async refreshTick(): Promise<void> {
+    let isOpen = false;
+    try {
+      const clock = await firstValueFrom(this.alpacaService.getClock());
+      isOpen = !!clock?.body?.is_open;
+    } catch {
+      return;
+    }
+    if (!isOpen && !this.refreshWasOpen) return;
+    this.refreshWasOpen = isOpen;
+    this.loadMarketSummary();
+    this.loadCharts();
+    this.refreshOpenHoldings();
   }
 
   selectRange(range: TimeRange): void {

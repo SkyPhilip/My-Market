@@ -209,7 +209,10 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
 })
 export class WatchlistComponent implements OnInit, OnDestroy {
   private static readonly POLL_MS = 30_000;
+  private static readonly ROW_REFRESH_MS = 15 * 60 * 1000;
   private pollInterval: ReturnType<typeof setInterval> | null = null;
+  private rowRefreshInterval: ReturnType<typeof setInterval> | null = null;
+  private rowRefreshWasOpen = false;
   private lastVisibleRefresh = 0;
   private alpacaService = inject(AlpacaService);
   private fmpService = inject(FmpService);
@@ -341,12 +344,17 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.loadWatchlist();
     this.pollInterval = setInterval(() => this.pollTick(), WatchlistComponent.POLL_MS);
+    this.rowRefreshInterval = setInterval(() => this.rowRefreshTick(), WatchlistComponent.ROW_REFRESH_MS);
   }
 
   ngOnDestroy(): void {
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
+    }
+    if (this.rowRefreshInterval) {
+      clearInterval(this.rowRefreshInterval);
+      this.rowRefreshInterval = null;
     }
   }
 
@@ -883,7 +891,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Silently refreshes any polled + expanded 1D charts, but only while the market is open. */
+  /** Silently refreshes any polled + expanded 1D CHARTS (row data is left to the 15-min refresh), but only while the market is open. */
   private async pollTick(): Promise<void> {
     const symbols = [...this.pollSymbols()].filter(s => this.expandedSymbols().has(s) && this.rangeFor(s) === '1D');
     if (!symbols.length) return;
@@ -895,6 +903,64 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     }
     for (const symbol of symbols) {
       this.loadChart(symbol, true);
+    }
+  }
+
+  /** 15-minute full-list row refresh. Runs while the market is open, plus one final pass just after
+   *  the close so the settled closing price/volume land; otherwise stays idle after hours. */
+  private async rowRefreshTick(): Promise<void> {
+    if (!this.symbols().length) return;
+    let isOpen = false;
+    try {
+      const clock = await firstValueFrom(this.alpacaService.getClock());
+      isOpen = !!clock?.body?.is_open;
+    } catch {
+      return;
+    }
+    if (isOpen) {
+      this.rowRefreshWasOpen = true;
+      await this.refreshRowSnapshots();
+    } else if (this.rowRefreshWasOpen) {
+      this.rowRefreshWasOpen = false;
+      await this.refreshRowSnapshots();
+    }
+  }
+
+  /** Re-fetches snapshots for every row and updates price/change/volume plus price-derived holdings figures. */
+  private async refreshRowSnapshots(): Promise<void> {
+    const symbols = this.symbols();
+    if (!symbols.length) return;
+    let snapshots: AlpacaSnapshotsResponse | null | undefined;
+    try {
+      const res = await firstValueFrom(this.alpacaService.getSnapshots(symbols));
+      snapshots = res?.body;
+    } catch {
+      return; // row refresh is best-effort
+    }
+    if (!snapshots) return;
+
+    this.watchlistRows.update(rows => rows.map(r => {
+      const snap = snapshots[r.symbol];
+      if (!snap) return r;
+      const price = snap.latestTrade?.p ?? snap.minuteBar?.c ?? r.price;
+      const prevClose = snap.prevDailyBar?.c ?? null;
+      const change = price !== null && prevClose ? +(price - prevClose).toFixed(2) : null;
+      const changePercent = change !== null && prevClose ? +((change / prevClose) * 100).toFixed(2) : null;
+      const volume = snap.dailyBar?.v ?? r.volume;
+      const marketValue = price !== null && r.shares !== null ? +(price * r.shares).toFixed(2) : null;
+      const gainLoss = price !== null && r.costBasis !== null ? +(price - r.costBasis).toFixed(2) : null;
+      const gainLossPercent = gainLoss !== null && r.costBasis !== null ? +((gainLoss / r.costBasis) * 100).toFixed(2) : null;
+      const totalGainLoss = marketValue !== null && r.totalCost !== null ? +(marketValue - r.totalCost).toFixed(2) : null;
+      const totalGainLossPercent = totalGainLoss !== null && r.totalCost !== null && r.totalCost !== 0 ? +((totalGainLoss / r.totalCost) * 100).toFixed(2) : null;
+      const dividendYield = this.#dividendYield(r.symbol, price);
+      return { ...r, price, change, changePercent, volume, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, dividendYield };
+    }));
+
+    // Re-evaluate trailing stops against the refreshed prices.
+    for (const r of this.watchlistRows()) {
+      if (r.price !== null && this.trailingStops().has(r.symbol)) {
+        this.evaluateTrailingStop(r.symbol, r.price);
+      }
     }
   }
 
