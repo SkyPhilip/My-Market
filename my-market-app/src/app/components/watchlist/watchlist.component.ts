@@ -220,7 +220,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   private notificationService = inject(NotificationService);
   private watchlistService = inject(WatchlistService);
 
-  title = input.required<string>();
+  heading = input.required<string>();
   watchlistName = input.required<string>();
 
   private fetchSnapshots = fetchFnWithState<AlpacaSnapshotsResponse, AlpacaErrorBody, string[]>((symbols: string[]) =>

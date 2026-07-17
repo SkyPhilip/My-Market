@@ -453,10 +453,21 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
         label.style.transform = 'translateX(-50%)';
       }
 
-      const ma20Value = this.ma20Series ? param.seriesData.get(this.ma20Series) as number | undefined : undefined;
-      const ma50Value = this.maSeries ? param.seriesData.get(this.maSeries) as number | undefined : undefined;
-      const ma150Value = this.ma150Series ? param.seriesData.get(this.ma150Series) as number | undefined : undefined;
-      const ma200Value = this.ma200Series ? param.seriesData.get(this.ma200Series) as number | undefined : undefined;
+      const readValue = (s: ISeriesApi<'Line'> | ISeriesApi<'Histogram'> | null): number | undefined => {
+        if (!s) return undefined;
+        const point = param.seriesData.get(s) as { value?: number } | undefined;
+        return typeof point?.value === 'number' ? point.value : undefined;
+      };
+
+      const volValue = readValue(this.volumeSeries);
+      const volText = this.volumeSeries && Number.isFinite(volValue)
+        ? `<span style="color:#7f9ad1">Vol: ${this.volumeSeries.priceFormatter().format(volValue!)}</span>`
+        : '';
+
+      const ma20Value = readValue(this.ma20Series);
+      const ma50Value = readValue(this.maSeries);
+      const ma150Value = readValue(this.ma150Series);
+      const ma200Value = readValue(this.ma200Series);
       const ma20Text = this.showMovingAverage20 && Number.isFinite(ma20Value)
         ? `<span style="color:#4dd0e1">20MA: ${ma20Value!.toFixed(2)}</span>`
         : '';
@@ -470,10 +481,11 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
         ? `<span style="color:#ec407a">200MA: ${ma200Value!.toFixed(2)}</span>`
         : '';
 
-      if (!ma20Text && !ma50Text && !ma150Text && !ma200Text) {
+      const readoutParts = [volText, ma20Text, ma50Text, ma150Text, ma200Text].filter(Boolean);
+      if (!readoutParts.length) {
         maTooltip.style.display = 'none';
       } else {
-        maTooltip.innerHTML = [ma20Text, ma50Text, ma150Text, ma200Text].filter(Boolean).join('<br>');
+        maTooltip.innerHTML = readoutParts.join('<br>');
         maTooltip.style.display = 'block';
       }
     });
@@ -1012,6 +1024,8 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     valueAreaRect.setAttribute('ry', '3');
     svg.appendChild(valueAreaRect);
 
+    const barInfos: { top: number; bottom: number; html: string }[] = [];
+
     for (let index = 0; index < bins.length; index += 1) {
       const bin = bins[index];
       const binTopPrice = bin.price + bin.step / 2;
@@ -1055,21 +1069,19 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       bar.setAttribute('rx', '2');
       bar.setAttribute('ry', '2');
 
-      const markerParts: string[] = [];
-      if (isPoc) markerParts.push('POC (Point of Control)');
-      if (isVah) markerParts.push('VAH (Value Area High)');
-      if (isVal) markerParts.push('VAL (Value Area Low)');
-
-      const title = document.createElementNS(svgNamespace, 'title');
+      const markerLabel = isPoc ? 'POC' : isVah ? 'VAH' : isVal ? 'VAL' : '';
+      const markerColor = isPoc ? '#ffc94a' : isVah ? '#5fd08a' : isVal ? '#e46b78' : '';
       const priceLow = binBottomPrice.toFixed(2);
       const priceHigh = binTopPrice.toFixed(2);
-      const volume = Math.round(bin.volume).toLocaleString();
-      title.textContent = [
-        markerParts.length ? markerParts.join(' | ') : 'Volume by Price bin',
-        `Price range: $${priceLow} - $${priceHigh}`,
-        `Volume: ${volume}`,
-      ].join('\n');
-      bar.appendChild(title);
+      const volLabel = this.volumeSeries
+        ? this.volumeSeries.priceFormatter().format(bin.volume)
+        : Math.round(bin.volume).toLocaleString();
+      const barTooltipHtml = [
+        markerLabel ? `<span style="color:${markerColor};font-weight:700">${markerLabel}</span>` : '',
+        `$${priceLow}\u2013$${priceHigh}`,
+        `Vol ${volLabel}`,
+      ].filter(Boolean).join('<br>');
+      barInfos.push({ top: y, bottom: y + barHeight, html: barTooltipHtml });
 
       svg.appendChild(bar);
     }
@@ -1105,8 +1117,27 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       'display:none',
     ].join(';');
 
+    const barTooltip = document.createElement('div');
+    barTooltip.style.cssText = [
+      'position:absolute',
+      'left:4px',
+      'padding:2px 5px',
+      'border-radius:4px',
+      'background:rgba(10,18,36,0.96)',
+      'border:1px solid rgba(74,158,255,0.55)',
+      'color:#dfe9ff',
+      'font-size:10px',
+      'line-height:1.25',
+      'font-weight:600',
+      'white-space:nowrap',
+      'pointer-events:none',
+      'z-index:8',
+      'display:none',
+    ].join(';');
+
     host.appendChild(paneCrosshairLine);
     host.appendChild(paneCrosshairPrice);
+    host.appendChild(barTooltip);
 
     const priceFormatter = this.series?.priceFormatter();
     host.onmousemove = (event: MouseEvent) => {
@@ -1116,6 +1147,15 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
 
       paneCrosshairLine.style.display = 'block';
       paneCrosshairLine.style.top = `${yPx}px`;
+
+      const hoveredBin = barInfos.find(info => y >= info.top && y <= info.bottom);
+      if (hoveredBin) {
+        barTooltip.innerHTML = hoveredBin.html;
+        barTooltip.style.top = `${Math.max(0, Math.min(chartHeight - 34, yPx + 6))}px`;
+        barTooltip.style.display = 'block';
+      } else {
+        barTooltip.style.display = 'none';
+      }
 
       const price = this.series?.coordinateToPrice(y);
       if (price != null) {
@@ -1139,6 +1179,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     host.onmouseleave = () => {
       paneCrosshairLine.style.display = 'none';
       paneCrosshairPrice.style.display = 'none';
+      barTooltip.style.display = 'none';
     };
   }
 }

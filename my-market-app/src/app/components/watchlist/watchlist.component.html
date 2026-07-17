@@ -1,5 +1,5 @@
 <div class="watchlist-section">
-  <h2>{{ title() }}</h2>
+  <h2>{{ heading() }}</h2>
   <div class="watchlist-actions">
     <form class="watchlist-form" (submit)="addSymbol($event)">
       <div class="input-wrapper">
@@ -51,7 +51,7 @@
     <p class="add-error">{{ addError() }}</p>
   }
   @if (watchlistState().prefetchOrBusy) {
-    <p class="loading">Loading {{ title() | lowercase }}...</p>
+    <p class="loading">Loading {{ heading() | lowercase }}...</p>
   } @else if (watchlistState().errorResOrException) {
     <p class="loading">Failed to load. <button (click)="loadWatchlist()">Retry</button></p>
   } @else if (watchlistRows().length) {
