@@ -92,7 +92,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() showMovingAverage150 = false;
   @Input() ma200Data: LineData<Time>[] = [];
   @Input() showMovingAverage200 = false;
-  @Input() volumeData: LineData<Time>[] = [];
+  @Input() volumeData: HistogramData<Time>[] = [];
   @Input() volumeProfileData: VolumeProfileBin[] = [];
   @Input() showRangeLines = false;
   @Input() rangeHigh: number | null = null;

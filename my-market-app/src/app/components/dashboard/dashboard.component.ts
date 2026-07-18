@@ -6,7 +6,7 @@ import { WatchlistComponent } from '../watchlist/watchlist.component';
 import { WatchlistService } from '../../services/watchlist.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaBarsResponse, AlpacaErrorBody, AlpacaSnapshot, AlpacaSnapshotsResponse } from '../../models/alpaca.models';
-import { LineData, Time } from 'lightweight-charts';
+import { LineData, HistogramData, Time } from 'lightweight-charts';
 import { firstValueFrom } from 'rxjs';
 
 type TimeRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'All';
@@ -112,7 +112,7 @@ interface IndexCard {
   chartData: LineData<Time>[];
   maData: LineData<Time>[];
   ma150Data: LineData<Time>[];
-  volumeData: LineData<Time>[];
+  volumeData: HistogramData<Time>[];
   volumeProfileData: VolumeProfileBin[];
   rangeHigh: number | null;
   rangeLow: number | null;
@@ -394,10 +394,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
           }
           updates.maData = maData;
           updates.ma150Data = ma150Data;
-          // Build volume data from bars
-          const volumeData: LineData<Time>[] = rawBars.map((bar, i) => ({
+          // Build volume data from bars, colored by candle direction (close vs open).
+          const volumeData: HistogramData<Time>[] = rawBars.map((bar, i) => ({
             time: chartData[i].time,
-            value: bar.v
+            value: bar.v,
+            color: bar.c >= bar.o ? 'rgba(40, 167, 69, 0.5)' : 'rgba(220, 53, 69, 0.5)',
           }));
           const volumeProfileData = buildVolumeProfile(rawBars);
           const rangeLevels = range === '5D' ? buildRangeLevels(rawBars) : null;

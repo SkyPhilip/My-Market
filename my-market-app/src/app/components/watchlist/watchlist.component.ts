@@ -11,7 +11,7 @@ import { FinnhubNewsArticle, FinnhubMetrics, FinnhubRecommendation, FinnhubEarni
 import { ChartComponent, DivergenceType } from '../chart/chart.component';
 import { NotificationService } from '../../services/notification.service';
 import { WatchlistService } from '../../services/watchlist.service';
-import { LineData, CandlestickData, Time } from 'lightweight-charts';
+import { LineData, CandlestickData, HistogramData, Time } from 'lightweight-charts';
 
 type TimeRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'All';
 
@@ -167,7 +167,7 @@ interface WatchlistRow {
   maData: LineData<Time>[];
   ma150Data: LineData<Time>[];
   ma200Data: LineData<Time>[];
-  volumeData: LineData<Time>[];
+  volumeData: HistogramData<Time>[];
   volumeProfileData: VolumeProfileBin[];
   rangeHigh: number | null;
   rangeLow: number | null;
@@ -1458,10 +1458,11 @@ export class WatchlistComponent implements OnInit, OnDestroy {
           }
         }
       }
-      // Build volume data from bars
-      const volumeData: LineData<Time>[] = bars.map((bar, i) => ({
+      // Build volume data from bars, colored by candle direction (close vs open).
+      const volumeData: HistogramData<Time>[] = bars.map((bar, i) => ({
         time: chartData[i].time,
-        value: bar.v
+        value: bar.v,
+        color: bar.c >= bar.o ? 'rgba(40, 167, 69, 0.5)' : 'rgba(220, 53, 69, 0.5)',
       }));
       // Build OHLC candlestick data (used for intraday ranges 1D/5D/1M).
       const candleData: CandlestickData<Time>[] = bars.map((bar, i) => ({
