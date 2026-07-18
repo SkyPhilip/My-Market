@@ -141,6 +141,7 @@ function isPaywalledSource(source: string | null | undefined): boolean {
 }
 
 interface WatchlistRow {
+  lotId: string;
   symbol: string;
   name: string;
   sector: string;
@@ -198,7 +199,7 @@ interface WatchlistRow {
 type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'dividendYield' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'totalGainLossPercent';
 type SortDirection = 'asc' | 'desc';
 
-type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number };
+type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number; lotId?: string };
 
 @Component({
   selector: 'app-watchlist',
@@ -245,10 +246,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   adding = signal(false);
   addError = signal<string | null>(null);
 
-  private costBasisMap = new Map<string, number>();
-  private sharesMap = new Map<string, number>();
-
-  hasCostBasis = computed(() => this.costBasisMap.size > 0);
+  hasCostBasis = computed(() => this.watchlistRows().some(r => r.costBasis !== null));
 
   portfolioTotalCost = computed(() => {
     return this.watchlistRows().reduce((sum, r) => sum + (r.totalCost ?? 0), 0);
@@ -269,19 +267,19 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
   sortColumn = signal<SortColumn | null>(null);
   sortDirection = signal<SortDirection>('asc');
-  expandedSymbols = signal<Set<string>>(new Set());
+  expandedLots = signal<Set<string>>(new Set());
   peerSymbols = signal<Set<string>>(new Set());
   macdSymbols = signal<Set<string>>(new Set());
   pollSymbols = signal<Set<string>>(new Set());
   divergenceMap = signal<Map<string, DivergenceType[]>>(new Map());
   private readonly EMPTY_DIV: DivergenceType[] = [];
-  fullscreenSymbol = signal<string | null>(null);
+  fullscreenLot = signal<string | null>(null);
   readonly timeRanges: TimeRange[] = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'All'];
   openingRangeSymbols = signal<Set<string>>(new Set());
   openingRangeNarrowSymbols = signal<Set<string>>(new Set());
   costBasisSymbols = signal<Set<string>>(new Set());
   trailingStops = signal<Map<string, { pct: number; peak: number; stop: number; expiry: number }>>(new Map());
-  readonly trailingStopForm = signal<{ symbol: string; price: number } | null>(null);
+  readonly trailingStopForm = signal<{ lotId: string; symbol: string; price: number } | null>(null);
   tsPctInput = '';
   tsExpiryInput = '';
   readonly newsPanelOpen = signal(false);
@@ -448,18 +446,20 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     }
   }
 
-  private saveToStorage(): void {
-    const entries: WatchlistEntry[] = this.symbols().map(symbol => {
-      const costBasis = this.costBasisMap.get(symbol);
-      const shares = this.sharesMap.get(symbol);
-      if (costBasis != null) {
-        const entry: { symbol: string; costBasis: number; shares?: number } = { symbol, costBasis };
-        if (shares != null) entry.shares = shares;
+  /** Serializes the current rows to storage entries (one entry per lot; a lot per row). */
+  private buildEntries(): WatchlistEntry[] {
+    return this.watchlistRows().map(r => {
+      if (r.costBasis != null) {
+        const entry: { symbol: string; costBasis: number; shares?: number; lotId: string } = { symbol: r.symbol, costBasis: r.costBasis, lotId: r.lotId };
+        if (r.shares != null) entry.shares = r.shares;
         return entry;
       }
-      return symbol;
+      return r.symbol;
     });
-    localStorage.setItem(this.storageKey, JSON.stringify(entries));
+  }
+
+  private saveToStorage(): void {
+    localStorage.setItem(this.storageKey, JSON.stringify(this.buildEntries()));
   }
 
   async loadWatchlist(): Promise<void> {
@@ -471,29 +471,20 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         rawEntries = [];
       }
 
-      const initialSymbols: string[] = [];
-      this.costBasisMap.clear();
-      this.sharesMap.clear();
-      for (const entry of rawEntries) {
-        if (typeof entry === 'string') {
-          initialSymbols.push(entry);
-        } else {
-          initialSymbols.push(entry.symbol);
-          this.costBasisMap.set(entry.symbol, entry.costBasis);
-          if (entry.shares != null) {
-            this.sharesMap.set(entry.symbol, entry.shares);
-          }
-        }
-      }
-      this.symbols.set([...initialSymbols]);
+      // Each entry is a lot; the same symbol may appear more than once (different cost/share).
+      const lots = rawEntries.map(entry => typeof entry === 'string'
+        ? { lotId: entry, symbol: entry, costBasis: null as number | null, shares: null as number | null }
+        : { lotId: entry.lotId ?? crypto.randomUUID(), symbol: entry.symbol, costBasis: entry.costBasis, shares: entry.shares ?? null });
+      const uniqueSymbols = [...new Set(lots.map(l => l.symbol))];
+      this.symbols.set(uniqueSymbols);
       this.loadTrailingStops();
 
-      if (!initialSymbols.length) {
+      if (!lots.length) {
         this.watchlistRows.set([]);
         return;
       }
 
-      const uncachedSymbols = initialSymbols.filter(s => !this.fmpService.hasProfile(s));
+      const uncachedSymbols = uniqueSymbols.filter(s => !this.fmpService.hasProfile(s));
       if (uncachedSymbols.length) {
         try {
           await firstValueFrom(this.fmpService.getProfiles(uncachedSymbols));
@@ -502,11 +493,12 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         }
       }
 
-      const snapResult = await this.fetchSnapshots(initialSymbols);
+      const snapResult = await this.fetchSnapshots(uniqueSymbols);
       if (!snapResult.okRes?.body) return;
 
       const snapshots = snapResult.okRes.body;
-      const rows: WatchlistRow[] = initialSymbols.map(symbol => {
+      const rows: WatchlistRow[] = lots.map(lot => {
+        const symbol = lot.symbol;
         const snap: AlpacaSnapshot | undefined = snapshots[symbol];
         const name = this.fmpService.getCachedCompanyName(symbol) ?? symbol;
         const price = snap?.latestTrade?.p ?? snap?.minuteBar?.c ?? null;
@@ -514,8 +506,8 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         const change = price && prevClose ? +(price - prevClose).toFixed(2) : null;
         const changePercent = price && prevClose ? +((change! / prevClose) * 100).toFixed(2) : null;
         const sector = this.fmpService.getCachedSector(symbol) ?? '\u2014';
-        const costBasis = this.costBasisMap.get(symbol) ?? null;
-        const shares = this.sharesMap.get(symbol) ?? null;
+        const costBasis = lot.costBasis;
+        const shares = lot.shares;
         const totalCost = costBasis !== null && shares !== null ? +(costBasis * shares).toFixed(2) : null;
         const marketValue = price !== null && shares !== null ? +(price * shares).toFixed(2) : null;
         const gainLoss = price !== null && costBasis !== null ? +(price - costBasis).toFixed(2) : null;
@@ -523,7 +515,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
+        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -552,7 +544,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
     const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
-    return { symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
+    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -597,7 +589,6 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     const parsedCostBasis = Number(this.newCostBasis);
     const shares = requiresHoldingInputs ? parsedShares : null;
     const costBasis = requiresHoldingInputs ? parsedCostBasis : null;
-
     if (requiresHoldingInputs) {
       if (!Number.isFinite(parsedShares) || parsedShares <= 0) {
         const msg = 'Enter a valid share quantity greater than 0.';
@@ -613,7 +604,17 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       }
     }
 
-    if (this.symbols().includes(symbol)) {
+    if (requiresHoldingInputs) {
+      // Holdings may hold the same ticker across multiple lots; reject only an exact cost/share duplicate.
+      const normalizedCostBasis = costBasis !== null ? +costBasis.toFixed(2) : null;
+      const duplicateLot = this.watchlistRows().some(r => r.symbol === symbol && r.costBasis === normalizedCostBasis);
+      if (duplicateLot) {
+        const msg = `${symbol} at $${normalizedCostBasis?.toFixed(2)}/share is already a lot \u2014 use a different cost/share.`;
+        this.addError.set(msg);
+        this.notificationService.showError(msg);
+        return;
+      }
+    } else if (this.symbols().includes(symbol)) {
       this.clearInput();
       return;
     }
@@ -654,15 +655,9 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         ? +((totalGainLoss / totalCost) * 100).toFixed(2)
         : null;
 
-      if (normalizedCostBasis !== null) {
-        this.costBasisMap.set(symbol, normalizedCostBasis);
-      }
-      if (normalizedShares !== null) {
-        this.sharesMap.set(symbol, normalizedShares);
-      }
-
-      this.symbols.update(s => [...s, symbol]);
+      this.symbols.update(s => s.includes(symbol) ? s : [...s, symbol]);
       this.watchlistRows.update(rows => [...rows, {
+        lotId: crypto.randomUUID(),
         symbol,
         name,
         sector,
@@ -723,29 +718,32 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     }
   }
 
-  removeSymbol(symbol: string): void {
-    this.symbols.update(s => s.filter(sym => sym !== symbol));
-    this.watchlistRows.update(rows => rows.filter(r => r.symbol !== symbol));
-    this.costBasisMap.delete(symbol);
-    this.sharesMap.delete(symbol);
-    this.expandedSymbols.update(s => { const next = new Set(s); next.delete(symbol); return next; });
-    this.trailingStops.update(m => { const next = new Map(m); next.delete(symbol); return next; });
-    this.saveTrailingStops();
+  removeLot(row: WatchlistRow): void {
+    const { lotId, symbol } = row;
+    this.watchlistRows.update(rows => rows.filter(r => r.lotId !== lotId));
+    this.expandedLots.update(s => { const next = new Set(s); next.delete(lotId); return next; });
+    if (this.fullscreenLot() === lotId) this.fullscreenLot.set(null);
+    // Clear this lot's per-lot chart state.
+    this.peerSymbols.update(s => { const next = new Set(s); next.delete(lotId); return next; });
+    this.macdSymbols.update(s => { const next = new Set(s); next.delete(lotId); return next; });
+    this.pollSymbols.update(s => { const next = new Set(s); next.delete(lotId); return next; });
+    this.costBasisSymbols.update(s => { const next = new Set(s); next.delete(lotId); return next; });
+    this.openingRangeSymbols.update(s => { const next = new Set(s); next.delete(lotId); return next; });
+    this.openingRangeNarrowSymbols.update(s => { const next = new Set(s); next.delete(lotId); return next; });
+    this.divergenceMap.update(m => { const next = new Map(m); next.delete(lotId); return next; });
+    if (this.trailingStops().has(lotId)) {
+      this.trailingStops.update(m => { const next = new Map(m); next.delete(lotId); return next; });
+      this.saveTrailingStops();
+    }
+    // Drop the symbol from the API dedup list once no lots of it remain.
+    if (!this.watchlistRows().some(r => r.symbol === symbol)) {
+      this.symbols.update(s => s.filter(sym => sym !== symbol));
+    }
     this.saveToStorage();
   }
 
   exportWatchlist(): void {
-    const entries: WatchlistEntry[] = this.symbols().map(symbol => {
-      const costBasis = this.costBasisMap.get(symbol);
-      const shares = this.sharesMap.get(symbol);
-      if (costBasis != null) {
-        const entry: { symbol: string; costBasis: number; shares?: number } = { symbol, costBasis };
-        if (shares != null) entry.shares = shares;
-        return entry;
-      }
-      return symbol;
-    });
-    const data = { [this.watchlistName()]: entries };
+    const data = { [this.watchlistName()]: this.buildEntries() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -771,12 +769,27 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     input.value = '';
   }
 
-  toggleChart(symbol: string): void {
-    if (this.expandedSymbols().has(symbol)) {
-      this.expandedSymbols.update(s => { const next = new Set(s); next.delete(symbol); return next; });
+  isExpanded(lotId: string): boolean {
+    return this.expandedLots().has(lotId);
+  }
+
+  /** Expands a single lot (if not already) and loads its chart plus the symbol's shared fundamentals. */
+  private ensureLotExpanded(row: WatchlistRow): void {
+    if (this.expandedLots().has(row.lotId)) return;
+    this.expandedLots.update(s => new Set(s).add(row.lotId));
+    this.loadChart(row.lotId);
+    this.loadMetrics(row.symbol);
+    this.loadRecommendation(row.symbol);
+    this.loadEarnings(row.symbol);
+  }
+
+  toggleChart(row: WatchlistRow): void {
+    const { lotId, symbol } = row;
+    if (this.expandedLots().has(lotId)) {
+      this.expandedLots.update(s => { const next = new Set(s); next.delete(lotId); return next; });
     } else {
-      this.expandedSymbols.update(s => new Set(s).add(symbol));
-      this.loadChart(symbol);
+      this.expandedLots.update(s => new Set(s).add(lotId));
+      this.loadChart(lotId);
       this.loadMetrics(symbol);
       this.loadRecommendation(symbol);
       this.loadEarnings(symbol);
@@ -786,24 +799,24 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   private async loadMetrics(symbol: string): Promise<void> {
     const row = this.watchlistRows().find(r => r.symbol === symbol);
     if (!row || row.metrics || row.metricsLoading) return;
-    this.patchRow(symbol, { metricsLoading: true });
+    this.patchSymbol(symbol, { metricsLoading: true });
     try {
       const metrics = await firstValueFrom(this.finnhubService.getBasicFinancials(symbol));
-      this.patchRow(symbol, { metrics: metrics ?? null, metricsLoading: false });
+      this.patchSymbol(symbol, { metrics: metrics ?? null, metricsLoading: false });
     } catch {
-      this.patchRow(symbol, { metricsLoading: false });
+      this.patchSymbol(symbol, { metricsLoading: false });
     }
   }
 
   private async loadRecommendation(symbol: string): Promise<void> {
     const row = this.watchlistRows().find(r => r.symbol === symbol);
     if (!row || row.recommendation || row.recommendationLoading) return;
-    this.patchRow(symbol, { recommendationLoading: true });
+    this.patchSymbol(symbol, { recommendationLoading: true });
     try {
       const trends = await firstValueFrom(this.finnhubService.getRecommendationTrends(symbol));
-      this.patchRow(symbol, { recommendation: trends?.[0] ?? null, recommendationLoading: false });
+      this.patchSymbol(symbol, { recommendation: trends?.[0] ?? null, recommendationLoading: false });
     } catch {
-      this.patchRow(symbol, { recommendationLoading: false });
+      this.patchSymbol(symbol, { recommendationLoading: false });
     }
   }
 
@@ -815,9 +828,9 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         firstValueFrom(this.finnhubService.getNextEarnings(symbol)),
         firstValueFrom(this.finnhubService.getEarningsSurprises(symbol)),
       ]);
-      this.patchRow(symbol, { nextEarnings: next, earningsSurprises: surprises ?? null, nextEarningsLoaded: true });
+      this.patchSymbol(symbol, { nextEarnings: next, earningsSurprises: surprises ?? null, nextEarningsLoaded: true });
     } catch {
-      this.patchRow(symbol, { nextEarningsLoaded: true });
+      this.patchSymbol(symbol, { nextEarningsLoaded: true });
     }
   }
 
@@ -875,34 +888,34 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     }
   }
 
-  toggleMacd(symbol: string): void {
+  toggleMacd(lotId: string): void {
     this.macdSymbols.update(s => {
       const next = new Set(s);
-      if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
+      if (next.has(lotId)) next.delete(lotId); else next.add(lotId);
       return next;
     });
   }
 
-  togglePoll(symbol: string): void {
+  togglePoll(lotId: string): void {
     this.pollSymbols.update(s => {
       const next = new Set(s);
-      if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
+      if (next.has(lotId)) next.delete(lotId); else next.add(lotId);
       return next;
     });
   }
 
   /** Silently refreshes any polled + expanded 1D CHARTS (row data is left to the 15-min refresh), but only while the market is open. */
   private async pollTick(): Promise<void> {
-    const symbols = [...this.pollSymbols()].filter(s => this.expandedSymbols().has(s) && this.rangeFor(s) === '1D');
-    if (!symbols.length) return;
+    const lotIds = [...this.pollSymbols()].filter(id => this.isExpanded(id) && this.rangeFor(id) === '1D');
+    if (!lotIds.length) return;
     try {
       const clock = await firstValueFrom(this.alpacaService.getClock());
       if (!clock?.body?.is_open) return;
     } catch {
       return;
     }
-    for (const symbol of symbols) {
-      this.loadChart(symbol, true);
+    for (const lotId of lotIds) {
+      this.loadChart(lotId, true);
     }
   }
 
@@ -956,58 +969,56 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       return { ...r, price, change, changePercent, volume, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, dividendYield };
     }));
 
-    // Re-evaluate trailing stops against the refreshed prices.
+    // Re-evaluate each lot's trailing stop against the refreshed prices.
     for (const r of this.watchlistRows()) {
-      if (r.price !== null && this.trailingStops().has(r.symbol)) {
-        this.evaluateTrailingStop(r.symbol, r.price);
+      if (r.price !== null && this.trailingStops().has(r.lotId)) {
+        this.evaluateTrailingStop(r.lotId, r.price);
       }
     }
   }
 
-  divergencesFor(symbol: string): DivergenceType[] {
-    return this.divergenceMap().get(symbol) ?? this.EMPTY_DIV;
+  divergencesFor(lotId: string): DivergenceType[] {
+    return this.divergenceMap().get(lotId) ?? this.EMPTY_DIV;
   }
 
-  hasDivergence(symbol: string, type: DivergenceType): boolean {
-    return this.divergencesFor(symbol).includes(type);
+  hasDivergence(lotId: string, type: DivergenceType): boolean {
+    return this.divergencesFor(lotId).includes(type);
   }
 
-  toggleDivergence(symbol: string, type: DivergenceType): void {
+  toggleDivergence(lotId: string, type: DivergenceType): void {
     this.divergenceMap.update(m => {
       const next = new Map(m);
-      const cur = new Set(next.get(symbol) ?? []);
+      const cur = new Set(next.get(lotId) ?? []);
       if (cur.has(type)) cur.delete(type); else cur.add(type);
-      if (cur.size) next.set(symbol, [...cur]); else next.delete(symbol);
+      if (cur.size) next.set(lotId, [...cur]); else next.delete(lotId);
       return next;
     });
   }
 
-  togglePeer(symbol: string): void {
-    if (this.peerSymbols().has(symbol)) {      this.peerSymbols.update(s => { const next = new Set(s); next.delete(symbol); return next; });
-      this.watchlistRows.update(rows => rows.map(r =>
-        r.symbol === symbol ? { ...r, peerData: [] } : r
-      ));
+  togglePeer(lotId: string): void {
+    const row = this.watchlistRows().find(r => r.lotId === lotId);
+    if (!row) return;
+    if (this.peerSymbols().has(lotId)) {
+      this.peerSymbols.update(s => { const next = new Set(s); next.delete(lotId); return next; });
+      this.patchRow(lotId, { peerData: [] });
       return;
     }
-    this.peerSymbols.update(s => new Set(s).add(symbol));
-    if (!this.expandedSymbols().has(symbol)) {
-      this.expandedSymbols.update(s => new Set(s).add(symbol));
-      this.loadChart(symbol);
-      this.loadMetrics(symbol);
-      this.loadRecommendation(symbol);
-      this.loadEarnings(symbol);
+    this.peerSymbols.update(s => new Set(s).add(lotId));
+    if (this.isExpanded(lotId)) {
+      this.loadPeer(lotId);
     } else {
-      this.loadPeer(symbol);
+      this.ensureLotExpanded(row);
     }
   }
 
-  private async loadPeer(symbol: string): Promise<void> {
-    const row = this.watchlistRows().find(r => r.symbol === symbol);
+  private async loadPeer(lotId: string): Promise<void> {
+    const row = this.watchlistRows().find(r => r.lotId === lotId);
     const mainData = row?.chartData ?? [];
-    if (!mainData.length) return;
+    if (!row || !mainData.length) return;
+    const symbol = row.symbol;
 
     this.watchlistRows.update(rows => rows.map(r =>
-      r.symbol === symbol ? { ...r, peerLoading: true, peerData: [] } : r
+      r.lotId === lotId ? { ...r, peerLoading: true, peerData: [] } : r
     ));
 
     const range = row?.range ?? '1D';
@@ -1019,7 +1030,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       if (!peerSymbol) {
         console.warn(`No peer found for ${symbol}.`);
         this.watchlistRows.update(rows => rows.map(r =>
-          r.symbol === symbol ? { ...r, peerSymbol: null, peerName: null, peerData: [], peerLoading: false } : r
+          r.lotId === lotId ? { ...r, peerSymbol: null, peerName: null, peerData: [], peerLoading: false } : r
         ));
         return;
       }
@@ -1041,7 +1052,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       if (!peerBars.length) {
         console.warn(`Peer ${peerSymbol} for ${symbol} has no price data on Alpaca.`);
         this.watchlistRows.update(rows => rows.map(r =>
-          r.symbol === symbol ? { ...r, peerSymbol, peerName, peerData: [], peerLoading: false } : r
+          r.lotId === lotId ? { ...r, peerSymbol, peerName, peerData: [], peerLoading: false } : r
         ));
         return;
       }
@@ -1057,43 +1068,50 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       });
 
       this.watchlistRows.update(rows => rows.map(r =>
-        r.symbol === symbol ? { ...r, peerSymbol, peerName, peerData, peerLoading: false } : r
+        r.lotId === lotId ? { ...r, peerSymbol, peerName, peerData, peerLoading: false } : r
       ));
     } catch {
       this.watchlistRows.update(rows => rows.map(r =>
-        r.symbol === symbol ? { ...r, peerLoading: false } : r
+        r.lotId === lotId ? { ...r, peerLoading: false } : r
       ));
     }
   }
 
-  private patchRow(symbol: string, patch: Partial<WatchlistRow>): void {
+  /** Patches a single lot's row (by lotId). */
+  private patchRow(lotId: string, patch: Partial<WatchlistRow>): void {
+    this.watchlistRows.update(rows => rows.map(r => r.lotId === lotId ? { ...r, ...patch } : r));
+  }
+
+  /** Patches every row of a symbol — used for symbol-level shared data (fundamentals). */
+  private patchSymbol(symbol: string, patch: Partial<WatchlistRow>): void {
     this.watchlistRows.update(rows => rows.map(r => r.symbol === symbol ? { ...r, ...patch } : r));
   }
 
-  private rangeFor(symbol: string): TimeRange {
-    return this.watchlistRows().find(r => r.symbol === symbol)?.range ?? '1D';
+  private rangeFor(lotId: string): TimeRange {
+    return this.watchlistRows().find(r => r.lotId === lotId)?.range ?? '1D';
   }
 
-  selectRange(symbol: string, range: TimeRange): void {
+  selectRange(lotId: string, range: TimeRange): void {
     const patch: Partial<WatchlistRow> = { range };
     if (range !== '5D') patch.showRangeLevels = false;
-    this.patchRow(symbol, patch);
-    this.loadChart(symbol);
+    this.patchRow(lotId, patch);
+    this.loadChart(lotId);
   }
 
-  toggleRangeLevels(symbol: string): void {
-    const row = this.watchlistRows().find(r => r.symbol === symbol);
+  toggleRangeLevels(lotId: string): void {
+    const row = this.watchlistRows().find(r => r.lotId === lotId);
     if (!row || row.range !== '5D') return;
-    this.patchRow(symbol, { showRangeLevels: !row.showRangeLevels });
+    this.patchRow(lotId, { showRangeLevels: !row.showRangeLevels });
   }
 
-  toggleFullscreen(symbol: string): void {
-    this.fullscreenSymbol.update(cur => cur === symbol ? null : symbol);
+  toggleFullscreen(row: WatchlistRow): void {
+    const lotId = row.lotId;
+    this.fullscreenLot.update(cur => cur === lotId ? null : lotId);
   }
 
   @HostListener('document:keydown.escape')
   closeFullscreen(): void {
-    if (this.fullscreenSymbol() !== null) this.fullscreenSymbol.set(null);
+    if (this.fullscreenLot() !== null) this.fullscreenLot.set(null);
   }
 
   /** Refresh polled 1D charts immediately when the tab becomes visible/focused again
@@ -1108,20 +1126,20 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     this.pollTick();
   }
 
-  toggleOpeningRange(symbol: string): void {
-    if (this.rangeFor(symbol) !== '1D') return;
+  toggleOpeningRange(lotId: string): void {
+    if (this.rangeFor(lotId) !== '1D') return;
     this.openingRangeSymbols.update(s => {
       const next = new Set(s);
-      if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
+      if (next.has(lotId)) next.delete(lotId); else next.add(lotId);
       return next;
     });
   }
 
-  toggleOpeningRangeNarrow(symbol: string): void {
-    if (this.rangeFor(symbol) !== '1D') return;
+  toggleOpeningRangeNarrow(lotId: string): void {
+    if (this.rangeFor(lotId) !== '1D') return;
     this.openingRangeNarrowSymbols.update(s => {
       const next = new Set(s);
-      if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
+      if (next.has(lotId)) next.delete(lotId); else next.add(lotId);
       return next;
     });
   }
@@ -1131,7 +1149,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     const low = row.openingRangeLow;
     const raw = bound === 'high' ? high : low;
     if (high === null || low === null) return raw;
-    if (!this.openingRangeNarrowSymbols().has(row.symbol)) return raw;
+    if (!this.openingRangeNarrowSymbols().has(row.lotId)) return raw;
     // Shrink the band width by 25% (keep 75% of the half-range) around its midpoint.
     const mid = (high + low) / 2;
     return +(mid + (raw! - mid) * 0.75).toFixed(4);
@@ -1145,69 +1163,69 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     return this.narrowedBound(row, 'low');
   }
 
-  toggleMovingAverage(symbol: string): void {
-    const row = this.watchlistRows().find(r => r.symbol === symbol);
+  toggleMovingAverage(lotId: string): void {
+    const row = this.watchlistRows().find(r => r.lotId === lotId);
     if (!row) return;
-    this.patchRow(symbol, { showMovingAverage: !row.showMovingAverage });
+    this.patchRow(lotId, { showMovingAverage: !row.showMovingAverage });
   }
 
-  toggleMovingAverage20(symbol: string): void {
-    const row = this.watchlistRows().find(r => r.symbol === symbol);
+  toggleMovingAverage20(lotId: string): void {
+    const row = this.watchlistRows().find(r => r.lotId === lotId);
     if (!row) return;
-    this.patchRow(symbol, { showMovingAverage20: !row.showMovingAverage20 });
+    this.patchRow(lotId, { showMovingAverage20: !row.showMovingAverage20 });
   }
 
-  toggleMovingAverage150(symbol: string): void {
-    const row = this.watchlistRows().find(r => r.symbol === symbol);
+  toggleMovingAverage150(lotId: string): void {
+    const row = this.watchlistRows().find(r => r.lotId === lotId);
     if (!row) return;
-    this.patchRow(symbol, { showMovingAverage150: !row.showMovingAverage150 });
+    this.patchRow(lotId, { showMovingAverage150: !row.showMovingAverage150 });
   }
 
-  toggleMovingAverage200(symbol: string): void {
-    const row = this.watchlistRows().find(r => r.symbol === symbol);
+  toggleMovingAverage200(lotId: string): void {
+    const row = this.watchlistRows().find(r => r.lotId === lotId);
     if (!row) return;
-    this.patchRow(symbol, { showMovingAverage200: !row.showMovingAverage200 });
+    this.patchRow(lotId, { showMovingAverage200: !row.showMovingAverage200 });
   }
 
-  toggleCostBasis(symbol: string): void {
+  toggleCostBasis(lotId: string): void {
     this.costBasisSymbols.update(s => {
       const next = new Set(s);
-      if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
+      if (next.has(lotId)) next.delete(lotId); else next.add(lotId);
       return next;
     });
   }
 
-  /** Current computed trailing stop level for a symbol (null if none set). */
-  trailingStopLevel(symbol: string): number | null {
-    return this.trailingStops().get(symbol)?.stop ?? null;
+  /** Current computed trailing stop level for a lot (null if none set). */
+  trailingStopLevel(lotId: string): number | null {
+    return this.trailingStops().get(lotId)?.stop ?? null;
   }
 
-  /** Expiry (epoch ms) of a symbol's trailing stop (null if none set). */
-  trailingStopExpiry(symbol: string): number | null {
-    return this.trailingStops().get(symbol)?.expiry ?? null;
+  /** Expiry (epoch ms) of a lot's trailing stop (null if none set). */
+  trailingStopExpiry(lotId: string): number | null {
+    return this.trailingStops().get(lotId)?.expiry ?? null;
   }
 
-  /** Trailing stop percentage for a symbol (null if none set). */
-  trailingStopPct(symbol: string): number | null {
-    return this.trailingStops().get(symbol)?.pct ?? null;
+  /** Trailing stop percentage for a lot (null if none set). */
+  trailingStopPct(lotId: string): number | null {
+    return this.trailingStops().get(lotId)?.pct ?? null;
   }
 
   /** Prompts (via a modal with a calendar) for a trailing stop percentage and expiry, or clears an existing one. */
-  toggleTrailingStop(symbol: string): void {
-    if (this.trailingStops().has(symbol)) {
-      this.trailingStops.update(m => { const next = new Map(m); next.delete(symbol); return next; });
+  toggleTrailingStop(lotId: string): void {
+    if (this.trailingStops().has(lotId)) {
+      this.trailingStops.update(m => { const next = new Map(m); next.delete(lotId); return next; });
       this.saveTrailingStops();
       return;
     }
-    const row = this.watchlistRows().find(r => r.symbol === symbol);
+    const row = this.watchlistRows().find(r => r.lotId === lotId);
     const price = row?.price ?? (row?.chartData.length ? row.chartData[row.chartData.length - 1].value : null);
-    if (price === null || price === undefined) {
+    if (!row || price === null || price === undefined) {
       this.notificationService.showError('Current price unavailable; cannot set a trailing stop.');
       return;
     }
     this.tsPctInput = '';
     this.tsExpiryInput = new Date(Date.now() + 30 * 86_400_000).toLocaleDateString('en-CA');
-    this.trailingStopForm.set({ symbol, price });
+    this.trailingStopForm.set({ lotId, symbol: row.symbol, price });
   }
 
   /** Earliest selectable expiry (tomorrow) for the date picker. */
@@ -1237,30 +1255,26 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       this.notificationService.showError('Choose a future expiry date.');
       return;
     }
-    const { symbol, price } = form;
+    const { lotId, price } = form;
     const stop = +(price * (1 - pct / 100)).toFixed(4);
     this.trailingStops.update(m => {
       const next = new Map(m);
-      next.set(symbol, { pct, peak: price, stop, expiry });
+      next.set(lotId, { pct, peak: price, stop, expiry });
       return next;
     });
     this.saveTrailingStops();
     this.trailingStopForm.set(null);
-    if (!this.expandedSymbols().has(symbol)) {
-      this.expandedSymbols.update(s => new Set(s).add(symbol));
-      this.loadChart(symbol);
-      this.loadMetrics(symbol);
-      this.loadRecommendation(symbol);
-      this.loadEarnings(symbol);
-    }
+    const row = this.watchlistRows().find(r => r.lotId === lotId);
+    if (row) this.ensureLotExpanded(row);
   }
 
   /** Ratchets the stop up with new highs; removes it (from storage) when the price crosses it or it expires. */
-  private evaluateTrailingStop(symbol: string, latestPrice: number): void {
-    const config = this.trailingStops().get(symbol);
+  private evaluateTrailingStop(lotId: string, latestPrice: number): void {
+    const config = this.trailingStops().get(lotId);
     if (!config) return;
+    const symbol = this.watchlistRows().find(r => r.lotId === lotId)?.symbol ?? '';
     if (Date.now() >= config.expiry) {
-      this.trailingStops.update(m => { const next = new Map(m); next.delete(symbol); return next; });
+      this.trailingStops.update(m => { const next = new Map(m); next.delete(lotId); return next; });
       this.saveTrailingStops();
       this.notificationService.showInfo(`${symbol} trailing stop expired.`);
       return;
@@ -1268,7 +1282,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     const peak = Math.max(config.peak, latestPrice);
     const stop = +(peak * (1 - config.pct / 100)).toFixed(4);
     if (latestPrice <= stop) {
-      this.trailingStops.update(m => { const next = new Map(m); next.delete(symbol); return next; });
+      this.trailingStops.update(m => { const next = new Map(m); next.delete(lotId); return next; });
       this.saveTrailingStops();
       this.notificationService.showError(`${symbol} hit its ${config.pct}% trailing stop at $${stop.toFixed(2)} (price $${latestPrice.toFixed(2)}).`);
       return;
@@ -1276,7 +1290,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     if (peak !== config.peak || stop !== config.stop) {
       this.trailingStops.update(m => {
         const next = new Map(m);
-        next.set(symbol, { ...config, peak, stop });
+        next.set(lotId, { ...config, peak, stop });
         return next;
       });
       this.saveTrailingStops();
@@ -1358,14 +1372,17 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     return `${years}y ago`;
   }
 
-  private async loadChart(symbol: string, silent = false): Promise<void> {
+  private async loadChart(lotId: string, silent = false): Promise<void> {
+    const targetRow = this.watchlistRows().find(r => r.lotId === lotId);
+    if (!targetRow) return;
+    const symbol = targetRow.symbol;
     if (!silent) {
       this.watchlistRows.update(rows => rows.map(r =>
-        r.symbol === symbol ? { ...r, chartLoading: true, chartData: [] } : r
+        r.lotId === lotId ? { ...r, chartLoading: true, chartData: [] } : r
       ));
     }
 
-    const range = this.watchlistRows().find(r => r.symbol === symbol)?.range ?? '1D';
+    const range = targetRow.range;
     const config = RANGE_CONFIGS[range];
     const isIntraday = range === '1D' || range === '5D' || range === '1M';
 
@@ -1476,7 +1493,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       const rangeLevels = range === '5D' ? buildRangeLevels(bars) : null;
       const openingRange = range === '1D' ? buildOpeningRange(currentSessionBars) : null;
       this.watchlistRows.update(rows => rows.map(r =>
-        r.symbol === symbol ? {
+        r.lotId === lotId ? {
           ...r,
           chartData,
           candleData,
@@ -1496,15 +1513,15 @@ export class WatchlistComponent implements OnInit, OnDestroy {
           sessionShadeUntil,
         } : r
       ));
-      if (this.trailingStops().has(symbol) && chartData.length) {
-        this.evaluateTrailingStop(symbol, chartData[chartData.length - 1].value);
+      if (this.trailingStops().has(lotId) && chartData.length) {
+        this.evaluateTrailingStop(lotId, chartData[chartData.length - 1].value);
       }
-      if (this.peerSymbols().has(symbol)) {
-        this.loadPeer(symbol);
+      if (this.peerSymbols().has(lotId)) {
+        this.loadPeer(lotId);
       }
     } catch {
       this.watchlistRows.update(rows => rows.map(r =>
-        r.symbol === symbol ? { ...r, chartLoading: false } : r
+        r.lotId === lotId ? { ...r, chartLoading: false } : r
       ));
     }
   }

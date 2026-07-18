@@ -82,8 +82,8 @@
         </tr>
       </thead>
       <tbody>
-        @for (row of sortedWatchlistRows(); track row.symbol) {
-          <tr class="clickable-row" [class.expanded]="expandedSymbols().has(row.symbol)" (click)="toggleChart(row.symbol)">
+        @for (row of sortedWatchlistRows(); track row.lotId) {
+          <tr class="clickable-row" [class.expanded]="isExpanded(row.lotId)" (click)="toggleChart(row)">
             <td class="symbol">
               <span class="symbol-text">{{ row.symbol }}</span>
             </td>
@@ -134,15 +134,15 @@
                 title="View news"
               >📰</button>
             </td>
-            <td><button type="button" class="watchlist-btn remove-btn" (click)="removeSymbol(row.symbol); $event.stopPropagation()">✕</button></td>
+            <td><button type="button" class="watchlist-btn remove-btn" (click)="removeLot(row); $event.stopPropagation()">✕</button></td>
           </tr>
-          @if (expandedSymbols().has(row.symbol)) {
+          @if (isExpanded(row.lotId)) {
             <tr class="chart-row">
               <td [attr.colspan]="hasCostBasis() ? 19 : 11">
                 @if (row.chartLoading) {
                   <p class="chart-loading">Loading chart...</p>
                 } @else {
-                  <div class="chart-panel" [class.fullscreen]="fullscreenSymbol() === row.symbol">
+                  <div class="chart-panel" [class.fullscreen]="fullscreenLot() === row.lotId">
                     <div class="chart-toolbar">
                       <span class="chart-title">{{ row.symbol }}<span class="chart-title__name">{{ row.name }}</span></span>
                       @for (range of timeRanges; track range) {
@@ -150,43 +150,43 @@
                           type="button"
                           class="range-btn"
                           [class.active]="row.range === range"
-                          (click)="selectRange(row.symbol, range)"
+                          (click)="selectRange(row.lotId, range)"
                         >{{ range }}</button>
                       }
                       <button
                         type="button"
                         class="range-btn ma20-btn"
                         [class.active]="row.showMovingAverage20"
-                        (click)="toggleMovingAverage20(row.symbol)"
+                        (click)="toggleMovingAverage20(row.lotId)"
                         title="Show or hide the 20-period moving average (window scales with the selected timeframe)"
                       >20MA</button>
                       <button
                         type="button"
                         class="range-btn ma50-btn"
                         [class.active]="row.showMovingAverage"
-                        (click)="toggleMovingAverage(row.symbol)"
+                        (click)="toggleMovingAverage(row.lotId)"
                         title="Show or hide the 50-period moving average (window scales with the selected timeframe)"
                       >50MA</button>
                       <button
                         type="button"
                         class="range-btn ma150-btn"
                         [class.active]="row.showMovingAverage150"
-                        (click)="toggleMovingAverage150(row.symbol)"
+                        (click)="toggleMovingAverage150(row.lotId)"
                         title="Show or hide the 150-period moving average (window scales with the selected timeframe)"
                       >150MA</button>
                       <button
                         type="button"
                         class="range-btn ma200-btn"
                         [class.active]="row.showMovingAverage200"
-                        (click)="toggleMovingAverage200(row.symbol)"
+                        (click)="toggleMovingAverage200(row.lotId)"
                         title="Show or hide the 200-period moving average (window scales with the selected timeframe)"
                       >200MA</button>
                       @if (isCurrentHoldings() && row.costBasis !== null) {
                         <button
                           type="button"
                           class="range-btn cost-basis-btn"
-                          [class.active]="costBasisSymbols().has(row.symbol)"
-                          (click)="toggleCostBasis(row.symbol)"
+                          [class.active]="costBasisSymbols().has(row.lotId)"
+                          (click)="toggleCostBasis(row.lotId)"
                           [title]="'Show or hide your cost basis ($' + (row.costBasis | number:'1.2-2') + '/share) as a line on the chart'"
                         >Cost Basis</button>
                       }
@@ -194,9 +194,9 @@
                         <button
                           type="button"
                           class="range-btn trailing-stop-btn"
-                          [class.active]="trailingStops().has(row.symbol)"
-                          (click)="toggleTrailingStop(row.symbol)"
-                          [title]="trailingStops().has(row.symbol) ? ('Trailing stop ' + (trailingStopPct(row.symbol) | number:'1.0-2') + '% · $' + (trailingStopLevel(row.symbol) | number:'1.2-2') + ' · expires ' + (trailingStopExpiry(row.symbol) | date:'MMM d, y') + ' — click to remove') : 'Set a trailing stop percentage below the peak, with a cross alert while polling'"
+                          [class.active]="trailingStops().has(row.lotId)"
+                          (click)="toggleTrailingStop(row.lotId)"
+                          [title]="trailingStops().has(row.lotId) ? ('Trailing stop ' + (trailingStopPct(row.lotId) | number:'1.0-2') + '% · $' + (trailingStopLevel(row.lotId) | number:'1.2-2') + ' · expires ' + (trailingStopExpiry(row.lotId) | date:'MMM d, y') + ' — click to remove') : 'Set a trailing stop percentage below the peak, with a cross alert while polling'"
                         >Trailing Stop</button>
                       }
                       @if (row.range === '5D') {
@@ -204,7 +204,7 @@
                           type="button"
                           class="range-btn"
                           [class.active]="row.showRangeLevels"
-                          (click)="toggleRangeLevels(row.symbol)"
+                          (click)="toggleRangeLevels(row.lotId)"
                           title="Show previous day range lines on 5D charts"
                         >Range High/Low</button>
                       }
@@ -213,16 +213,16 @@
                           <button
                             type="button"
                             class="range-btn"
-                            [class.active]="openingRangeSymbols().has(row.symbol)"
-                            (click)="toggleOpeningRange(row.symbol)"
+                            [class.active]="openingRangeSymbols().has(row.lotId)"
+                            (click)="toggleOpeningRange(row.lotId)"
                             title="Mark the first 15 minutes (9:30–9:45 ET) high/low"
                           >Opening Range</button>
-                          @if (openingRangeSymbols().has(row.symbol)) {
+                          @if (openingRangeSymbols().has(row.lotId)) {
                             <button
                               type="button"
                               class="range-btn"
-                              [class.active]="openingRangeNarrowSymbols().has(row.symbol)"
-                              (click)="toggleOpeningRangeNarrow(row.symbol)"
+                              [class.active]="openingRangeNarrowSymbols().has(row.lotId)"
+                              (click)="toggleOpeningRangeNarrow(row.lotId)"
                               title="Narrow the opening range band by 25% around its midpoint"
                             >−25%</button>
                           }
@@ -231,36 +231,36 @@
                       <button
                         type="button"
                         class="range-btn macd-btn"
-                        [class.active]="macdSymbols().has(row.symbol)"
-                        (click)="toggleMacd(row.symbol)"
+                        [class.active]="macdSymbols().has(row.lotId)"
+                        (click)="toggleMacd(row.lotId)"
                         title="Show or hide Impulse MACD (34/9) in a lower pane — flat inside the channel, impulses on momentum breakouts"
                       >iMACD</button>
                       <button
                         type="button"
                         class="range-btn div-btn div-bull"
-                        [class.active]="hasDivergence(row.symbol, 'regBull')"
-                        (click)="toggleDivergence(row.symbol, 'regBull')"
+                        [class.active]="hasDivergence(row.lotId, 'regBull')"
+                        (click)="toggleDivergence(row.lotId, 'regBull')"
                         title="Regular bullish divergence: price lower low + momentum higher low — possible reversal up"
                       >Reg▲</button>
                       <button
                         type="button"
                         class="range-btn div-btn div-bull"
-                        [class.active]="hasDivergence(row.symbol, 'hidBull')"
-                        (click)="toggleDivergence(row.symbol, 'hidBull')"
+                        [class.active]="hasDivergence(row.lotId, 'hidBull')"
+                        (click)="toggleDivergence(row.lotId, 'hidBull')"
                         title="Hidden bullish divergence: price higher low + momentum lower low — uptrend likely to continue"
                       >Hid▲</button>
                       <button
                         type="button"
                         class="range-btn div-btn div-bear"
-                        [class.active]="hasDivergence(row.symbol, 'regBear')"
-                        (click)="toggleDivergence(row.symbol, 'regBear')"
+                        [class.active]="hasDivergence(row.lotId, 'regBear')"
+                        (click)="toggleDivergence(row.lotId, 'regBear')"
                         title="Regular bearish divergence: price higher high + momentum lower high — possible reversal down"
                       >Reg▼</button>
                       <button
                         type="button"
                         class="range-btn div-btn div-bear"
-                        [class.active]="hasDivergence(row.symbol, 'hidBear')"
-                        (click)="toggleDivergence(row.symbol, 'hidBear')"
+                        [class.active]="hasDivergence(row.lotId, 'hidBear')"
+                        (click)="toggleDivergence(row.lotId, 'hidBear')"
                         title="Hidden bearish divergence: price lower high + momentum higher high — downtrend likely to continue"
                       >Hid▼</button>
                       @if (isEtf(row.symbol)) {
@@ -269,9 +269,9 @@
                         <button
                           type="button"
                           class="peer-btn"
-                          [class.active]="peerSymbols().has(row.symbol)"
+                          [class.active]="peerSymbols().has(row.lotId)"
                           [class.loading]="row.peerLoading"
-                          (click)="togglePeer(row.symbol)"
+                          (click)="togglePeer(row.lotId)"
                           [title]="row.peerName ? ('Peer: ' + row.peerName) : (row.peerSymbol ? ('Peer: ' + row.peerSymbol) : 'Show closest peer overlay')"
                         >{{ row.peerLoading ? '…' : (row.peerSymbol ?? 'Peer') }}</button>
                       }
@@ -286,17 +286,17 @@
                         <button
                           type="button"
                           class="range-btn poll-btn"
-                          [class.active]="pollSymbols().has(row.symbol)"
-                          (click)="togglePoll(row.symbol)"
+                          [class.active]="pollSymbols().has(row.lotId)"
+                          (click)="togglePoll(row.lotId)"
                           title="Auto-refresh this 1D chart every 30s while the market is open"
                         >⟳ Poll</button>
                       }
                       <button
                         type="button"
                         class="range-btn fullscreen-btn"
-                        (click)="toggleFullscreen(row.symbol)"
-                        [title]="fullscreenSymbol() === row.symbol ? 'Exit full screen (Esc)' : 'Expand chart to full screen'"
-                      >{{ fullscreenSymbol() === row.symbol ? '✕ Close' : '⛶ Full screen' }}</button>
+                        (click)="toggleFullscreen(row)"
+                        [title]="fullscreenLot() === row.lotId ? 'Exit full screen (Esc)' : 'Expand chart to full screen'"
+                      >{{ fullscreenLot() === row.lotId ? '✕ Close' : '⛶ Full screen' }}</button>
                     </div>
                     @if (row.metricsLoading) {
                       <div class="fundamentals fundamentals--state">Loading fundamentals…</div>
@@ -396,20 +396,20 @@
                       [rangeLow]="row.rangeLow"
                       [swingHigh]="row.swingHigh"
                       [swingLow]="row.swingLow"
-                      [showOpeningRange]="openingRangeSymbols().has(row.symbol) && row.range === '1D'"
+                      [showOpeningRange]="openingRangeSymbols().has(row.lotId) && row.range === '1D'"
                       [openingRangeHigh]="openingRangeHighFor(row)"
                       [openingRangeLow]="openingRangeLowFor(row)"
-                      [showCostBasis]="costBasisSymbols().has(row.symbol)"
+                      [showCostBasis]="costBasisSymbols().has(row.lotId)"
                       [costBasis]="row.costBasis"
-                      [showTrailingStop]="trailingStops().has(row.symbol)"
-                      [trailingStop]="trailingStopLevel(row.symbol)"
+                      [showTrailingStop]="trailingStops().has(row.lotId)"
+                      [trailingStop]="trailingStopLevel(row.lotId)"
                       [showSessionShade]="row.range === '1D'"
                       [sessionShadeUntil]="row.sessionShadeUntil"
                       [peerData]="row.peerData"
-                      [showPeer]="peerSymbols().has(row.symbol)"
-                      [showMacd]="macdSymbols().has(row.symbol)"
-                      [divergenceTypes]="divergencesFor(row.symbol)"
-                      [fillHeight]="fullscreenSymbol() === row.symbol"
+                      [showPeer]="peerSymbols().has(row.lotId)"
+                      [showMacd]="macdSymbols().has(row.lotId)"
+                      [divergenceTypes]="divergencesFor(row.lotId)"
+                      [fillHeight]="fullscreenLot() === row.lotId"
                     ></app-chart>
                   </div>
                 }
