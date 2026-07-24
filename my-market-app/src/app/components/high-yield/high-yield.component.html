@@ -3,7 +3,7 @@
       <h2>High Yield</h2>
       <p class="subtitle">
         Top 10 highest dividend yields among large-cap stocks across sectors (ETFs/funds excluded).
-        Yield = annual dividend ÷ price. Cached for the day.
+        Yield = annual dividend ÷ price. Cached until you click Refresh.
       </p>
 
       <div class="hy-actions">
@@ -55,8 +55,10 @@
               }
             </tbody>
           </table>
-        } @else {
+        } @else if (asOf()) {
           <p class="loading">No dividend-paying stocks found (the free-tier screener may be limited for some sectors).</p>
+        } @else {
+          <p class="loading">Click Refresh to screen for high-yield dividend stocks.</p>
         }
       }
     </div>

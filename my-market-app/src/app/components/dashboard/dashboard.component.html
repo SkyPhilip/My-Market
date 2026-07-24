@@ -10,17 +10,17 @@
           >{{ range }}</button>
         }
         <button
-          class="range-btn ma50-btn"
-          [class.active]="showMovingAverage()"
-          (click)="toggleMovingAverage()"
-          title="Show or hide the 50-day moving average"
-        >50MA</button>
+          class="range-btn ma20-btn"
+          [class.active]="showMovingAverage20()"
+          (click)="toggleMovingAverage20()"
+          title="Show or hide the 20-day moving average"
+        >20MA</button>
         <button
-          class="range-btn ma150-btn"
-          [class.active]="showMovingAverage150()"
-          (click)="toggleMovingAverage150()"
-          title="Show or hide the 150-day moving average"
-        >150MA</button>
+          class="range-btn ma200-btn"
+          [class.active]="showMovingAverage200()"
+          (click)="toggleMovingAverage200()"
+          title="Show or hide the 200-day moving average"
+        >200MA</button>
         @if (selectedRange() === '5D') {
           <button
             class="range-btn"
@@ -70,10 +70,10 @@
             <app-chart
               [data]="card.chartData"
               [color]="card.color"
-              [maData]="card.maData"
-              [showMovingAverage]="showMovingAverage()"
-              [ma150Data]="card.ma150Data"
-              [showMovingAverage150]="showMovingAverage150()"
+              [ma20Data]="card.ma20Data"
+              [showMovingAverage20]="showMovingAverage20()"
+              [ma200Data]="card.ma200Data"
+              [showMovingAverage200]="showMovingAverage200()"
               [volumeData]="card.volumeData"
               [volumeProfileData]="card.volumeProfileData"
               [showRangeLines]="showRangeLevels() && selectedRange() === '5D'"
@@ -167,10 +167,6 @@
       <app-watchlist
         heading="Current Holdings"
         watchlistName="Current Holdings"
-      />
-      <app-watchlist
-        heading="Watch List"
-        watchlistName="Watch List"
       />
     </div>
   

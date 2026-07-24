@@ -1,0 +1,36 @@
+<div class="watch-lists-page">
+  <section class="picker-panel">
+    <div class="picker-header">
+      <div class="picker-intro">
+        <h2>Stock Picker</h2>
+        <p class="picker-sub">
+          On-demand quality screen: profitable, low debt, growing EPS, four green EPS surprises,
+          buying volume with green candles, and price below the 200-day average. Best matches first.
+        </p>
+      </div>
+      <button type="button" class="refresh-btn" (click)="refresh()" [disabled]="loading()">
+        {{ loading() ? 'Screening…' : '⟳ Refresh picks' }}
+      </button>
+    </div>
+
+    @if (loading()) {
+      <p class="picker-status">{{ progress() }}</p>
+    } @else if (error()) {
+      <p class="picker-status picker-status--error">{{ error() }}</p>
+    } @else if (lastRefreshed()) {
+      <p class="picker-status">Last refreshed {{ lastRefreshed() }}</p>
+    }
+  </section>
+
+  <app-watchlist
+    [heading]="recommendedList"
+    [watchlistName]="recommendedList"
+    [copyToListName]="manualList"
+    [allowAdd]="false"
+  />
+
+  <app-watchlist
+    [heading]="manualList"
+    [watchlistName]="manualList"
+  />
+</div>

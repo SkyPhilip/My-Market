@@ -1,6 +1,7 @@
 <div class="watchlist-section">
   <h2>{{ heading() }}</h2>
   <div class="watchlist-actions">
+    @if (allowAdd()) {
     <form class="watchlist-form" (submit)="addSymbol($event)">
       <div class="input-wrapper">
         <input
@@ -39,6 +40,7 @@
       }
       <button type="submit" class="watchlist-btn add-btn" [disabled]="!canSubmitSymbol() || adding()">Add</button>
     </form>
+    }
     <div class="io-buttons">
       <button class="watchlist-btn io-btn" (click)="exportWatchlist()">Export</button>
       <label class="watchlist-btn io-btn import-label">
@@ -134,7 +136,17 @@
                 title="View news"
               >📰</button>
             </td>
-            <td><button type="button" class="watchlist-btn remove-btn" (click)="removeLot(row); $event.stopPropagation()">✕</button></td>
+            <td class="row-actions">
+              @if (copyToListName()) {
+                <button
+                  type="button"
+                  class="watchlist-btn copy-btn"
+                  (click)="moveToList(row); $event.stopPropagation()"
+                  [title]="'Move to ' + copyToListName() + ' (removes from picks)'"
+                >＋</button>
+              }
+              <button type="button" class="watchlist-btn remove-btn" (click)="removeLot(row); $event.stopPropagation()">✕</button>
+            </td>
           </tr>
           @if (isExpanded(row.lotId)) {
             <tr class="chart-row">
@@ -160,20 +172,6 @@
                         (click)="toggleMovingAverage20(row.lotId)"
                         title="Show or hide the 20-period moving average (window scales with the selected timeframe)"
                       >20MA</button>
-                      <button
-                        type="button"
-                        class="range-btn ma50-btn"
-                        [class.active]="row.showMovingAverage"
-                        (click)="toggleMovingAverage(row.lotId)"
-                        title="Show or hide the 50-period moving average (window scales with the selected timeframe)"
-                      >50MA</button>
-                      <button
-                        type="button"
-                        class="range-btn ma150-btn"
-                        [class.active]="row.showMovingAverage150"
-                        (click)="toggleMovingAverage150(row.lotId)"
-                        title="Show or hide the 150-period moving average (window scales with the selected timeframe)"
-                      >150MA</button>
                       <button
                         type="button"
                         class="range-btn ma200-btn"

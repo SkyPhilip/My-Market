@@ -48,6 +48,13 @@ export class WatchlistService {
     return true;
   }
 
+  /** Overwrites a watchlist with the given (deduped, upper-cased) tickers and notifies listeners. */
+  replaceEntries(name: string, symbols: string[]): void {
+    const entries = [...new Set(symbols.map(s => s.trim().toUpperCase()).filter(Boolean))];
+    localStorage.setItem(this.#storageKey(name), JSON.stringify(entries));
+    this.#versionSignal(name).update(v => v + 1);
+  }
+
   /** Reactive change counter for a watchlist; bumped whenever addSymbol adds a ticker. */
   version(name: string): Signal<number> {
     return this.#versionSignal(name);

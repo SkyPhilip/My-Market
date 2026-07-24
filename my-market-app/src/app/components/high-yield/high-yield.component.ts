@@ -7,7 +7,7 @@ import { HighYieldStock } from '../../models/fmp.models';
 import { SECTOR_SYMBOLS } from '../../data/sector-symbols';
 
 interface HighYieldCache {
-  date: string;
+  asOf: string;
   rows: HighYieldStock[];
 }
 
@@ -31,12 +31,12 @@ export class HighYieldComponent implements OnInit {
   readonly asOf = signal('');
 
   ngOnInit(): void {
+    // Show cached results only. Screening fetches an FMP profile per universe symbol
+    // (~330 calls), so it never runs automatically — only when Refresh is clicked.
     const cached = this.#readCache();
-    if (cached && cached.date === this.#today()) {
+    if (cached) {
       this.rows.set(cached.rows);
-      this.asOf.set(new Date().toLocaleDateString());
-    } else {
-      this.load();
+      this.asOf.set(cached.asOf);
     }
   }
 
@@ -60,9 +60,10 @@ export class HighYieldComponent implements OnInit {
       const symbols = Object.values(SECTOR_SYMBOLS).flat();
       const all = await firstValueFrom(this.fmp.getHighYieldStocks(symbols));
       const rows = all.slice(0, MAX_ROWS);
+      const asOf = new Date().toLocaleString();
       this.rows.set(rows);
-      this.asOf.set(new Date().toLocaleDateString());
-      this.#writeCache({ date: this.#today(), rows });
+      this.asOf.set(asOf);
+      this.#writeCache({ asOf, rows });
     } catch (e) {
       this.error.set(e instanceof Error ? e.message : 'Failed to load high-yield stocks.');
     } finally {
@@ -70,13 +71,9 @@ export class HighYieldComponent implements OnInit {
     }
   }
 
-  #today(): string {
-    return new Date().toISOString().split('T')[0];
-  }
-
   #readCache(): HighYieldCache | null {
     try {
-      const raw = sessionStorage.getItem(CACHE_KEY);
+      const raw = localStorage.getItem(CACHE_KEY);
       return raw ? JSON.parse(raw) as HighYieldCache : null;
     } catch {
       return null;
@@ -85,7 +82,7 @@ export class HighYieldComponent implements OnInit {
 
   #writeCache(cache: HighYieldCache): void {
     try {
-      sessionStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
     } catch {
       // ignore quota errors
     }

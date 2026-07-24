@@ -110,8 +110,8 @@ interface IndexCard {
   change: number | null;
   changePercent: number | null;
   chartData: LineData<Time>[];
-  maData: LineData<Time>[];
-  ma150Data: LineData<Time>[];
+  ma20Data: LineData<Time>[];
+  ma200Data: LineData<Time>[];
   volumeData: HistogramData<Time>[];
   volumeProfileData: VolumeProfileBin[];
   rangeHigh: number | null;
@@ -137,9 +137,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private static readonly SYMBOLS = ['DIA', 'SPY', 'QQQ'] as const;
   private static readonly CARD_DEFAULTS: IndexCard[] = [
-    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#4a9eff' },
-    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#28a745' },
-    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], maData: [], ma150Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#ffc107' },
+    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], ma20Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#4a9eff' },
+    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], ma20Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#28a745' },
+    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], ma20Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#ffc107' },
   ];
 
   // Top 6 constituents per index ETF (symbol + company name), roughly by weight.
@@ -178,8 +178,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   readonly timeRanges: TimeRange[] = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'All'];
   readonly selectedRange = signal<TimeRange>('1D');
-  readonly showMovingAverage = signal(false);
-  readonly showMovingAverage150 = signal(false);
+  readonly showMovingAverage20 = signal(false);
+  readonly showMovingAverage200 = signal(true);
   readonly showRangeLevels = signal(false);
 
   fetchSummary = fetchFnWithState<AlpacaSnapshotsResponse, AlpacaErrorBody>(() =>
@@ -238,12 +238,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.showRangeLevels.set(!this.showRangeLevels());
   }
 
-  toggleMovingAverage(): void {
-    this.showMovingAverage.set(!this.showMovingAverage());
+  toggleMovingAverage20(): void {
+    this.showMovingAverage20.set(!this.showMovingAverage20());
   }
 
-  toggleMovingAverage150(): void {
-    this.showMovingAverage150.set(!this.showMovingAverage150());
+  toggleMovingAverage200(): void {
+    this.showMovingAverage200.set(!this.showMovingAverage200());
   }
 
   addToWatchList(symbol: string): void {
@@ -366,34 +366,34 @@ export class DashboardComponent implements OnInit, OnDestroy {
           if (c.currentPrice === null && rawBars.length > 0) {
             updates.currentPrice = rawBars[rawBars.length - 1].c;
           }
-          // Compute 50-period moving average (cumulative for first 49 points)
-          const maData: LineData<Time>[] = [];
-          const ma150Data: LineData<Time>[] = [];
-          const period = 50;
-          const period150 = 150;
+          // Moving averages (cumulative until enough bars exist).
+          const ma20Data: LineData<Time>[] = [];
+          const ma200Data: LineData<Time>[] = [];
+          const period20 = 20;
+          const period200 = 200;
           if (chartData.length > 0) {
-            let sum = 0;
-            let sum150 = 0;
+            let sum20 = 0;
+            let sum200 = 0;
             for (let i = 0; i < chartData.length; i++) {
-              sum += chartData[i].value;
-              sum150 += chartData[i].value;
-              if (i >= period) {
-                sum -= chartData[i - period].value;
-                maData.push({ time: chartData[i].time, value: +(sum / period).toFixed(2) });
+              sum20 += chartData[i].value;
+              sum200 += chartData[i].value;
+              if (i >= period20) {
+                sum20 -= chartData[i - period20].value;
+                ma20Data.push({ time: chartData[i].time, value: +(sum20 / period20).toFixed(2) });
               } else {
-                maData.push({ time: chartData[i].time, value: +(sum / (i + 1)).toFixed(2) });
+                ma20Data.push({ time: chartData[i].time, value: +(sum20 / (i + 1)).toFixed(2) });
               }
 
-              if (i >= period150) {
-                sum150 -= chartData[i - period150].value;
-                ma150Data.push({ time: chartData[i].time, value: +(sum150 / period150).toFixed(2) });
+              if (i >= period200) {
+                sum200 -= chartData[i - period200].value;
+                ma200Data.push({ time: chartData[i].time, value: +(sum200 / period200).toFixed(2) });
               } else {
-                ma150Data.push({ time: chartData[i].time, value: +(sum150 / (i + 1)).toFixed(2) });
+                ma200Data.push({ time: chartData[i].time, value: +(sum200 / (i + 1)).toFixed(2) });
               }
             }
           }
-          updates.maData = maData;
-          updates.ma150Data = ma150Data;
+          updates.ma20Data = ma20Data;
+          updates.ma200Data = ma200Data;
           // Build volume data from bars, colored by candle direction (close vs open).
           const volumeData: HistogramData<Time>[] = rawBars.map((bar, i) => ({
             time: chartData[i].time,

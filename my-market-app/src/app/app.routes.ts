@@ -7,6 +7,7 @@ export const routes: Routes = [
   { path: 'dashboard', loadComponent: () => import('./components/dashboard/dashboard.component').then(m => m.DashboardComponent), canActivate: [authGuard] },
   { path: 'settings', loadComponent: () => import('./components/settings/settings.component').then(m => m.SettingsComponent), canActivate: [authGuard] },
   { path: 'money-flow', loadComponent: () => import('./components/money-flow/money-flow.component').then(m => m.MoneyFlowComponent), canActivate: [authGuard] },
+  { path: 'watch-lists', loadComponent: () => import('./components/watch-lists/watch-lists.component').then(m => m.WatchListsComponent), canActivate: [authGuard] },
   { path: 'high-yield', loadComponent: () => import('./components/high-yield/high-yield.component').then(m => m.HighYieldComponent), canActivate: [authGuard] },
   { path: '**', redirectTo: '/dashboard' }
 ];

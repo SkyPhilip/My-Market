@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, computed, signal, inject, input, effect, HostListener, WritableSignal } from '@angular/core';
+import { Component, OnInit, OnDestroy, computed, signal, inject, input, effect, untracked, HostListener, WritableSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -223,6 +223,10 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
   heading = input.required<string>();
   watchlistName = input.required<string>();
+  /** When set, each row shows a one-click button that copies its ticker into this other watchlist. */
+  copyToListName = input<string | null>(null);
+  /** When false, hides the manual add form (e.g. for an auto-managed list like Recommended Picks). */
+  allowAdd = input<boolean>(true);
 
   private fetchSnapshots = fetchFnWithState<AlpacaSnapshotsResponse, AlpacaErrorBody, string[]>((symbols: string[]) =>
     this.alpacaService.getSnapshots(symbols)
@@ -328,14 +332,25 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     // to this watchlist via WatchlistService.
     effect(() => {
       this.watchlistService.version(this.watchlistName())();
-      if (!this.initialized()) return;
-      const current = this.symbols();
-      for (const entry of this.watchlistService.getEntries(this.watchlistName())) {
-        const sym = (typeof entry === 'string' ? entry : entry.symbol).toUpperCase();
-        if (!current.includes(sym)) {
-          this.addTicker(sym);
+      const ready = this.initialized();
+      untracked(() => {
+        if (!ready) return;
+        const entries = this.watchlistService.getEntries(this.watchlistName());
+        const storageSymbols = new Set(entries.map(e => (typeof e === 'string' ? e : e.symbol).toUpperCase()));
+        // Prune rows no longer in storage (lets another component REPLACE this list);
+        // skip Current Holdings, which is lot-based and edited only locally.
+        if (!this.isCurrentHoldings()) {
+          for (const row of this.watchlistRows().filter(r => !storageSymbols.has(r.symbol))) {
+            this.removeLot(row);
+          }
         }
-      }
+        const current = this.symbols();
+        for (const sym of storageSymbols) {
+          if (!current.includes(sym)) {
+            this.addTicker(sym);
+          }
+        }
+      });
     });
   }
 
@@ -515,7 +530,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
+        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -544,7 +559,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
     const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
-    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: false, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
+    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -573,6 +588,14 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
   hasSymbol(symbol: string): boolean {
     return this.symbols().includes(symbol.trim().toUpperCase());
+  }
+
+  /** Moves a row's ticker into the `copyToListName` watchlist and removes it from this list. */
+  moveToList(row: WatchlistRow): void {
+    const name = this.copyToListName();
+    if (!name) return;
+    this.watchlistService.addSymbol(name, row.symbol);
+    this.removeLot(row);
   }
 
   isEtf(symbol: string): boolean {
@@ -697,7 +720,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         showMovingAverage20: false,
         showMovingAverage: false,
         showMovingAverage150: false,
-        showMovingAverage200: false,
+        showMovingAverage200: true,
         showRangeLevels: false,
         peerSymbol: null,
         peerName: null,
