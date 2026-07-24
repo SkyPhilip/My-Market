@@ -159,7 +159,6 @@ interface WatchlistRow {
   gainLoss: number | null;
   gainLossPercent: number | null;
   totalGainLoss: number | null;
-  totalGainLossPercent: number | null;
   chartData: LineData<Time>[];
   candleData: CandlestickData<Time>[];
   chartLoading: boolean;
@@ -196,7 +195,7 @@ interface WatchlistRow {
   earningsSurprises: FinnhubEarningsSurprise[] | null;
 }
 
-type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'dividendYield' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'totalGainLossPercent';
+type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'dividendYield' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'weightPercent';
 type SortDirection = 'asc' | 'desc';
 
 type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number; lotId?: string };
@@ -315,8 +314,11 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     if (!col) return rows;
 
     return [...rows].sort((a, b) => {
-      const aVal = a[col];
-      const bVal = b[col];
+      const portfolioCost = col === 'weightPercent' ? this.portfolioTotalCost() : 0;
+      const weight = (r: WatchlistRow): number | null =>
+        r.totalCost !== null && portfolioCost > 0 ? r.totalCost / portfolioCost : null;
+      const aVal = col === 'weightPercent' ? weight(a) : a[col];
+      const bVal = col === 'weightPercent' ? weight(b) : b[col];
       if (aVal === null && bVal === null) return 0;
       if (aVal === null) return 1;
       if (bVal === null) return -1;
@@ -388,6 +390,14 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
   isCurrentHoldings(): boolean {
     return this.watchlistName().toLowerCase() === 'current holdings';
+  }
+
+  /** This holding's total cost as a percent of the whole portfolio's cost — i.e. its
+   *  allocation weight. Weights across all rows sum to 100%. Null when portfolio cost is 0. */
+  weightPercent(row: WatchlistRow): number | null {
+    const totalCost = this.portfolioTotalCost();
+    if (row.totalCost === null || totalCost <= 0) return null;
+    return +((row.totalCost / totalCost) * 100).toFixed(2);
   }
 
   canSubmitSymbol(): boolean {
@@ -528,9 +538,8 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         const gainLoss = price !== null && costBasis !== null ? +(price - costBasis).toFixed(2) : null;
         const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
-        const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
+        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -558,8 +567,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     const gainLoss = price !== null && costBasis !== null ? +(price - costBasis).toFixed(2) : null;
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
-    const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0 ? +((totalGainLoss / totalCost) * 100).toFixed(2) : null;
-    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
+    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -674,9 +682,6 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         ? +((gainLoss / normalizedCostBasis) * 100).toFixed(2)
         : null;
       const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
-      const totalGainLossPercent = totalGainLoss !== null && totalCost !== null && totalCost !== 0
-        ? +((totalGainLoss / totalCost) * 100).toFixed(2)
-        : null;
 
       this.symbols.update(s => s.includes(symbol) ? s : [...s, symbol]);
       this.watchlistRows.update(rows => [...rows, {
@@ -699,7 +704,6 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         gainLoss,
         gainLossPercent,
         totalGainLoss,
-        totalGainLossPercent,
         chartData: [],
         candleData: [],
         chartLoading: false,
@@ -987,9 +991,8 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       const gainLoss = price !== null && r.costBasis !== null ? +(price - r.costBasis).toFixed(2) : null;
       const gainLossPercent = gainLoss !== null && r.costBasis !== null ? +((gainLoss / r.costBasis) * 100).toFixed(2) : null;
       const totalGainLoss = marketValue !== null && r.totalCost !== null ? +(marketValue - r.totalCost).toFixed(2) : null;
-      const totalGainLossPercent = totalGainLoss !== null && r.totalCost !== null && r.totalCost !== 0 ? +((totalGainLoss / r.totalCost) * 100).toFixed(2) : null;
       const dividendYield = this.#dividendYield(r.symbol, price);
-      return { ...r, price, change, changePercent, volume, marketValue, gainLoss, gainLossPercent, totalGainLoss, totalGainLossPercent, dividendYield };
+      return { ...r, price, change, changePercent, volume, marketValue, gainLoss, gainLossPercent, totalGainLoss, dividendYield };
     }));
 
     // Re-evaluate each lot's trailing stop against the refreshed prices.

@@ -77,7 +77,7 @@
             <th class="sortable" (click)="sortBy('gainLoss')">G/L <span class="sort-icon">{{ sortIcon('gainLoss') }}</span></th>
             <th class="sortable" (click)="sortBy('gainLossPercent')">G/L % <span class="sort-icon">{{ sortIcon('gainLossPercent') }}</span></th>
             <th class="sortable" (click)="sortBy('totalGainLoss')">Total G/L <span class="sort-icon">{{ sortIcon('totalGainLoss') }}</span></th>
-            <th class="sortable" (click)="sortBy('totalGainLossPercent')">Total G/L % <span class="sort-icon">{{ sortIcon('totalGainLossPercent') }}</span></th>
+            <th class="sortable" (click)="sortBy('weightPercent')" title="This holding's total cost as a % of the whole portfolio's cost (all rows sum to 100%)">Weight % <span class="sort-icon">{{ sortIcon('weightPercent') }}</span></th>
           }
           <th class="news-col">Docs</th>
           <th></th>
@@ -123,8 +123,9 @@
               <td class="change" [class.positive]="(row.totalGainLoss ?? 0) >= 0" [class.negative]="(row.totalGainLoss ?? 0) < 0">
                 {{ row.totalGainLoss !== null ? ((row.totalGainLoss >= 0 ? '+$' : '-$') + (row.totalGainLoss >= 0 ? row.totalGainLoss : -row.totalGainLoss | number:'1.2-2')) : '—' }}
               </td>
-              <td class="change" [class.positive]="(row.totalGainLossPercent ?? 0) >= 0" [class.negative]="(row.totalGainLossPercent ?? 0) < 0">
-                {{ row.totalGainLossPercent !== null ? ((row.totalGainLossPercent >= 0 ? '+' : '') + (row.totalGainLossPercent | number:'1.2-2') + '%') : '—' }}
+              @let weight = weightPercent(row);
+              <td class="price">
+                {{ weight !== null ? ((weight | number:'1.2-2') + '%') : '—' }}
               </td>
             }
             <td class="news-col">
@@ -426,13 +427,13 @@
             <td class="price">{{'$'}}{{ portfolioTotalCost() | number:'1.2-2' }}</td>
             <td class="price">{{'$'}}{{ portfolioMarketValue() | number:'1.2-2' }}</td>
             <td></td>
-            <td></td>
-            <td class="change" [class.positive]="portfolioTotalGainLoss() >= 0" [class.negative]="portfolioTotalGainLoss() < 0">
-              {{ portfolioTotalGainLoss() >= 0 ? '+$' : '-$' }}{{ (portfolioTotalGainLoss() >= 0 ? portfolioTotalGainLoss() : -portfolioTotalGainLoss()) | number:'1.2-2' }}
-            </td>
             <td class="change" [class.positive]="portfolioTotalGainLossPercent() >= 0" [class.negative]="portfolioTotalGainLossPercent() < 0">
               {{ portfolioTotalGainLossPercent() >= 0 ? '+' : '' }}{{ portfolioTotalGainLossPercent() | number:'1.2-2' }}%
             </td>
+            <td class="change" [class.positive]="portfolioTotalGainLoss() >= 0" [class.negative]="portfolioTotalGainLoss() < 0">
+              {{ portfolioTotalGainLoss() >= 0 ? '+$' : '-$' }}{{ (portfolioTotalGainLoss() >= 0 ? portfolioTotalGainLoss() : -portfolioTotalGainLoss()) | number:'1.2-2' }}
+            </td>
+            <td></td>
             <td></td>
           </tr>
         </tfoot>
