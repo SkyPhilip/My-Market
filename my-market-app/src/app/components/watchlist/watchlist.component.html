@@ -63,6 +63,9 @@
           <th class="sortable" (click)="sortBy('symbol')">Symbol <span class="sort-icon">{{ sortIcon('symbol') }}</span></th>
           <th class="sortable" (click)="sortBy('name')">Name <span class="sort-icon">{{ sortIcon('name') }}</span></th>
           <th class="sortable" (click)="sortBy('sector')">Sector <span class="sort-icon">{{ sortIcon('sector') }}</span></th>
+          @if (hasCostBasis()) {
+            <th class="sortable" (click)="sortBy('costBasis')">Cost <span class="sort-icon">{{ sortIcon('costBasis') }}</span></th>
+          }
           <th class="sortable" (click)="sortBy('price')">Price <span class="sort-icon">{{ sortIcon('price') }}</span></th>
           <th class="sortable" (click)="sortBy('change')">Change <span class="sort-icon">{{ sortIcon('change') }}</span></th>
           <th class="sortable" (click)="sortBy('changePercent')">Change % <span class="sort-icon">{{ sortIcon('changePercent') }}</span></th>
@@ -71,7 +74,6 @@
           <th class="sortable" (click)="sortBy('dividendYield')">Div Yield <span class="sort-icon">{{ sortIcon('dividendYield') }}</span></th>
           @if (hasCostBasis()) {
             <th class="sortable" (click)="sortBy('shares')">Shares <span class="sort-icon">{{ sortIcon('shares') }}</span></th>
-            <th class="sortable" (click)="sortBy('costBasis')">Cost <span class="sort-icon">{{ sortIcon('costBasis') }}</span></th>
             <th class="sortable" (click)="sortBy('totalCost')">Total Cost <span class="sort-icon">{{ sortIcon('totalCost') }}</span></th>
             <th class="sortable" (click)="sortBy('marketValue')">Mkt Value <span class="sort-icon">{{ sortIcon('marketValue') }}</span></th>
             <th class="sortable" (click)="sortBy('gainLoss')">G/L <span class="sort-icon">{{ sortIcon('gainLoss') }}</span></th>
@@ -91,7 +93,14 @@
             </td>
             <td class="name">{{ row.name }}</td>
             <td class="sector">{{ row.sector }}</td>
-            <td class="price">{{ row.price !== null ? ('$' + (row.price | number:'1.2-2')) : '—' }}</td>
+            @if (hasCostBasis()) {
+              <td class="price">{{ row.costBasis !== null ? ('$' + (row.costBasis | number:'1.2-2')) : '—' }}</td>
+            }
+            <td class="price"
+              [class.positive]="row.costBasis !== null && row.price !== null && row.price >= row.costBasis"
+              [class.negative]="row.costBasis !== null && row.price !== null && row.price < row.costBasis">
+              {{ row.price !== null ? ('$' + (row.price | number:'1.2-2')) : '—' }}
+            </td>
             <td class="change" [class.positive]="(row.change ?? 0) >= 0" [class.negative]="(row.change ?? 0) < 0">
               {{ row.change !== null ? ((row.change >= 0 ? '+' : '') + (row.change | number:'1.2-2')) : '—' }}
             </td>
@@ -111,7 +120,6 @@
             <td class="price">{{ row.dividendYield !== null ? ((row.dividendYield | number:'1.2-2') + '%') : '—' }}</td>
             @if (hasCostBasis()) {
               <td class="shares">{{ row.shares !== null ? (row.shares | number:'1.0-4') : '—' }}</td>
-              <td class="price">{{ row.costBasis !== null ? ('$' + (row.costBasis | number:'1.2-2')) : '—' }}</td>
               <td class="price">{{ row.totalCost !== null ? ('$' + (row.totalCost | number:'1.2-2')) : '—' }}</td>
               <td class="price">{{ row.marketValue !== null ? ('$' + (row.marketValue | number:'1.2-2')) : '—' }}</td>
               <td class="change" [class.positive]="(row.gainLoss ?? 0) >= 0" [class.negative]="(row.gainLoss ?? 0) < 0">
@@ -420,10 +428,7 @@
       @if (hasCostBasis()) {
         <tfoot>
           <tr class="summary-row">
-            <td colspan="8">Portfolio Totals</td>
-            <td></td>
-            <td></td>
-            <td></td>
+            <td colspan="11">Portfolio Totals</td>
             <td class="price">{{'$'}}{{ portfolioTotalCost() | number:'1.2-2' }}</td>
             <td class="price">{{'$'}}{{ portfolioMarketValue() | number:'1.2-2' }}</td>
             <td></td>

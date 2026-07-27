@@ -80,6 +80,28 @@
     .change.negative {
       color: #dc3545;
     }
+    .index-card__return {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .index-card__return-label {
+      color: #8892b0;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .index-card__return-value {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .index-card__return-value.positive {
+      color: #28a745;
+    }
+    .index-card__return-value.negative {
+      color: #dc3545;
+    }
     .loading {
       color: #8892b0;
       font-size: 14px;

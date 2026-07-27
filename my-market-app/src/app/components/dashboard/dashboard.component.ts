@@ -250,6 +250,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.watchlistService.addSymbol('Watch List', symbol);
   }
 
+  /** Hypothetical % return over the currently shown chart range: first value → latest value. */
+  hypotheticalReturn(card: IndexCard): number | null {
+    const data = card.chartData;
+    if (data.length < 2) return null;
+    const first = data[0].value;
+    const last = data[data.length - 1].value;
+    if (!(first > 0) || !Number.isFinite(last)) return null;
+    return +(((last - first) / first) * 100).toFixed(2);
+  }
+
   inWatchList(symbol: string): boolean {
     this.watchlistService.version('Watch List')(); // reactive dependency
     return this.watchlistService.has('Watch List', symbol);

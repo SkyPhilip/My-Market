@@ -67,6 +67,15 @@
                 <span class="loading">Loading...</span>
               }
             </div>
+            @let hypoReturn = hypotheticalReturn(card);
+            @if (hypoReturn !== null) {
+              <div class="index-card__return">
+                <span class="index-card__return-label">{{ selectedRange() }} return</span>
+                <span class="index-card__return-value" [class.positive]="hypoReturn >= 0" [class.negative]="hypoReturn < 0">
+                  {{ hypoReturn >= 0 ? '+' : '' }}{{ hypoReturn | number:'1.2-2' }}%
+                </span>
+              </div>
+            }
             <app-chart
               [data]="card.chartData"
               [color]="card.color"
