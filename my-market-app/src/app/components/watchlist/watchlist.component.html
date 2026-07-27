@@ -206,13 +206,13 @@
                           [title]="trailingStops().has(row.lotId) ? ('Trailing stop ' + (trailingStopPct(row.lotId) | number:'1.0-2') + '% · $' + (trailingStopLevel(row.lotId) | number:'1.2-2') + ' · expires ' + (trailingStopExpiry(row.lotId) | date:'MMM d, y') + ' — click to remove') : 'Set a trailing stop percentage below the peak, with a cross alert while polling'"
                         >Trailing Stop</button>
                       }
-                      @if (row.range === '5D') {
+                      @if (row.range === '5D' || row.range === '1D') {
                         <button
                           type="button"
                           class="range-btn"
                           [class.active]="row.showRangeLevels"
                           (click)="toggleRangeLevels(row.lotId)"
-                          title="Show previous day range lines on 5D charts"
+                          title="Show the previous day's range high/low and prior swing high/low"
                         >Range High/Low</button>
                       }
                       @if (row.range === '1D') {
@@ -398,7 +398,7 @@
                       [showMovingAverage200]="row.showMovingAverage200"
                       [volumeData]="row.volumeData"
                       [volumeProfileData]="row.volumeProfileData"
-                      [showRangeLines]="row.showRangeLevels && row.range === '5D'"
+                      [showRangeLines]="row.showRangeLevels && (row.range === '5D' || row.range === '1D')"
                       [rangeHigh]="row.rangeHigh"
                       [rangeLow]="row.rangeLow"
                       [swingHigh]="row.swingHigh"

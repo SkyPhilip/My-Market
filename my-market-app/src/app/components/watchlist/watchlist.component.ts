@@ -1119,14 +1119,14 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
   selectRange(lotId: string, range: TimeRange): void {
     const patch: Partial<WatchlistRow> = { range };
-    if (range !== '5D') patch.showRangeLevels = false;
+    if (range !== '5D' && range !== '1D') patch.showRangeLevels = false;
     this.patchRow(lotId, patch);
     this.loadChart(lotId);
   }
 
   toggleRangeLevels(lotId: string): void {
     const row = this.watchlistRows().find(r => r.lotId === lotId);
-    if (!row || row.range !== '5D') return;
+    if (!row || (row.range !== '5D' && row.range !== '1D')) return;
     this.patchRow(lotId, { showRangeLevels: !row.showRangeLevels });
   }
 
@@ -1516,7 +1516,11 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         close: bar.c,
       }));
       const volumeProfileData = buildVolumeProfile(range === '1D' ? currentSessionBars : bars);
-      const rangeLevels = range === '5D' ? buildRangeLevels(bars) : null;
+      // 1D keeps only the last two sessions in `bars`, so use the wider `rawBars` window
+      // to resolve the previous-day range plus the swing day before it.
+      const rangeLevels = range === '5D' ? buildRangeLevels(bars)
+        : range === '1D' ? buildRangeLevels(rawBars)
+        : null;
       const openingRange = range === '1D' ? buildOpeningRange(currentSessionBars) : null;
       this.watchlistRows.update(rows => rows.map(r =>
         r.lotId === lotId ? {
