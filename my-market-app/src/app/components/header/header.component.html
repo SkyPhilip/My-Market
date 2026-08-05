@@ -8,11 +8,12 @@
         </span>
       </div>
       <nav class="header__nav">
-        <a class="header__link" (click)="navigateTo('/dashboard')">Dashboard</a>
-        <a class="header__link" (click)="navigateTo('/watch-lists')">Watch Lists</a>
-        <a class="header__link" (click)="navigateTo('/money-flow')">Money Flow</a>
-        <a class="header__link" (click)="navigateTo('/high-yield')">High Yield</a>
-        <a class="header__link" (click)="navigateTo('/settings')">Settings</a>
+        <a class="header__link" routerLink="/dashboard" routerLinkActive="header__link--active">Dashboard</a>
+        <a class="header__link" routerLink="/watch-lists" routerLinkActive="header__link--active">Watch Lists</a>
+        <a class="header__link" routerLink="/money-flow" routerLinkActive="header__link--active">Money Flow</a>
+        <a class="header__link" routerLink="/high-yield" routerLinkActive="header__link--active">High Yield</a>
+        <a class="header__link" routerLink="/history" routerLinkActive="header__link--active">History</a>
+        <a class="header__link" routerLink="/settings" routerLinkActive="header__link--active">Settings</a>
         <button class="header__logout" (click)="onLogout()">Logout</button>
       </nav>
     </header>

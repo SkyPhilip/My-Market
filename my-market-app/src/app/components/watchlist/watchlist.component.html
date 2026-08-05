@@ -61,25 +61,28 @@
       <thead>
         <tr>
           <th class="sortable" (click)="sortBy('symbol')">Symbol <span class="sort-icon">{{ sortIcon('symbol') }}</span></th>
+          <th class="etf-col"></th>
           <th class="sortable" (click)="sortBy('name')">Name <span class="sort-icon">{{ sortIcon('name') }}</span></th>
           <th class="sortable" (click)="sortBy('sector')">Sector <span class="sort-icon">{{ sortIcon('sector') }}</span></th>
           @if (hasCostBasis()) {
+            <th class="sortable" (click)="sortBy('shares')">Shares <span class="sort-icon">{{ sortIcon('shares') }}</span></th>
             <th class="sortable" (click)="sortBy('costBasis')">Cost <span class="sort-icon">{{ sortIcon('costBasis') }}</span></th>
           }
           <th class="sortable" (click)="sortBy('price')">Price <span class="sort-icon">{{ sortIcon('price') }}</span></th>
           <th class="sortable" (click)="sortBy('change')">Change <span class="sort-icon">{{ sortIcon('change') }}</span></th>
           <th class="sortable" (click)="sortBy('changePercent')">Change % <span class="sort-icon">{{ sortIcon('changePercent') }}</span></th>
-          <th class="sortable" (click)="sortBy('volume')">Volume <span class="sort-icon">{{ sortIcon('volume') }}</span></th>
-          <th class="sortable" (click)="sortBy('pegy')">PEGY <span class="sort-icon">{{ sortIcon('pegy') }}</span></th>
+          @if (!isCurrentHoldings()) {
+            <th class="sortable" (click)="sortBy('pegy')">PEGY <span class="sort-icon">{{ sortIcon('pegy') }}</span></th>
+          }
           <th class="sortable" (click)="sortBy('dividendYield')">Div Yield <span class="sort-icon">{{ sortIcon('dividendYield') }}</span></th>
           @if (hasCostBasis()) {
-            <th class="sortable" (click)="sortBy('shares')">Shares <span class="sort-icon">{{ sortIcon('shares') }}</span></th>
             <th class="sortable" (click)="sortBy('totalCost')">Total Cost <span class="sort-icon">{{ sortIcon('totalCost') }}</span></th>
             <th class="sortable" (click)="sortBy('marketValue')">Mkt Value <span class="sort-icon">{{ sortIcon('marketValue') }}</span></th>
             <th class="sortable" (click)="sortBy('gainLoss')">G/L <span class="sort-icon">{{ sortIcon('gainLoss') }}</span></th>
             <th class="sortable" (click)="sortBy('gainLossPercent')">G/L % <span class="sort-icon">{{ sortIcon('gainLossPercent') }}</span></th>
             <th class="sortable" (click)="sortBy('totalGainLoss')">Total G/L <span class="sort-icon">{{ sortIcon('totalGainLoss') }}</span></th>
             <th class="sortable" (click)="sortBy('weightPercent')" title="This holding's total cost as a % of the whole portfolio's cost (all rows sum to 100%)">Weight % <span class="sort-icon">{{ sortIcon('weightPercent') }}</span></th>
+            <th>Date Bought</th>
           }
           <th class="news-col">Docs</th>
           <th></th>
@@ -87,13 +90,21 @@
       </thead>
       <tbody>
         @for (row of sortedWatchlistRows(); track row.lotId) {
-          <tr class="clickable-row" [class.expanded]="isExpanded(row.lotId)" (click)="toggleChart(row)">
+          <tr class="clickable-row" [class.expanded]="isExpanded(row.lotId)" [ngClass]="earningsRowClass(row)"
+            [title]="daysUntilEarnings(row) !== null && daysUntilEarnings(row)! <= 3 ? (row.symbol + ' reports earnings in ' + daysUntilEarnings(row) + ' day(s)') : ''"
+            (click)="toggleChart(row)">
             <td class="symbol">
               <span class="symbol-text">{{ row.symbol }}</span>
+            </td>
+            <td class="etf-col">
+              @if (isEtf(row.symbol)) {
+                <span class="etf-badge" title="ETF / Fund">ETF</span>
+              }
             </td>
             <td class="name">{{ row.name }}</td>
             <td class="sector">{{ row.sector }}</td>
             @if (hasCostBasis()) {
+              <td class="shares">{{ row.shares !== null ? (row.shares | number:'1.0-4') : '—' }}</td>
               <td class="price">{{ row.costBasis !== null ? ('$' + (row.costBasis | number:'1.2-2')) : '—' }}</td>
             }
             <td class="price"
@@ -107,7 +118,7 @@
             <td class="change" [class.positive]="(row.changePercent ?? 0) >= 0" [class.negative]="(row.changePercent ?? 0) < 0">
               {{ row.changePercent !== null ? ((row.changePercent >= 0 ? '+' : '') + (row.changePercent | number:'1.2-2') + '%') : '—' }}
             </td>
-            <td class="volume">{{ formatVolume(row.volume) }}</td>
+            @if (!isCurrentHoldings()) {
             <td class="price">
               @if (row.pegyLoading) {
                 <span class="pegy-pending">…</span>
@@ -117,9 +128,9 @@
                 <button type="button" class="pegy-btn" [title]="pegyTooltip" (click)="loadPegy(row.symbol); $event.stopPropagation()">PEGY</button>
               }
             </td>
+            }
             <td class="price">{{ row.dividendYield !== null ? ((row.dividendYield | number:'1.2-2') + '%') : '—' }}</td>
             @if (hasCostBasis()) {
-              <td class="shares">{{ row.shares !== null ? (row.shares | number:'1.0-4') : '—' }}</td>
               <td class="price">{{ row.totalCost !== null ? ('$' + (row.totalCost | number:'1.2-2')) : '—' }}</td>
               <td class="price">{{ row.marketValue !== null ? ('$' + (row.marketValue | number:'1.2-2')) : '—' }}</td>
               <td class="change" [class.positive]="(row.gainLoss ?? 0) >= 0" [class.negative]="(row.gainLoss ?? 0) < 0">
@@ -135,6 +146,7 @@
               <td class="price">
                 {{ weight !== null ? ((weight | number:'1.2-2') + '%') : '—' }}
               </td>
+              <td class="date-bought">{{ row.addedAt ? (row.addedAt | date:'mediumDate') : '—' }}</td>
             }
             <td class="news-col">
               <button
@@ -159,7 +171,7 @@
           </tr>
           @if (isExpanded(row.lotId)) {
             <tr class="chart-row">
-              <td [attr.colspan]="hasCostBasis() ? 19 : 11">
+              <td [attr.colspan]="(hasCostBasis() ? 20 : 11) - (isCurrentHoldings() ? 1 : 0)">
                 @if (row.chartLoading) {
                   <p class="chart-loading">Loading chart...</p>
                 } @else {

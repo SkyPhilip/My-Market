@@ -11,6 +11,7 @@ import { FinnhubNewsArticle, FinnhubMetrics, FinnhubRecommendation, FinnhubEarni
 import { ChartComponent, DivergenceType } from '../chart/chart.component';
 import { NotificationService } from '../../services/notification.service';
 import { WatchlistService } from '../../services/watchlist.service';
+import { HistoryService } from '../../services/history.service';
 import { LineData, CandlestickData, HistogramData, Time } from 'lightweight-charts';
 
 type TimeRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'All';
@@ -193,12 +194,13 @@ interface WatchlistRow {
   nextEarnings: FinnhubEarningsDate | null;
   nextEarningsLoaded: boolean;
   earningsSurprises: FinnhubEarningsSurprise[] | null;
+  addedAt: string | null;
 }
 
 type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'dividendYield' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'weightPercent';
 type SortDirection = 'asc' | 'desc';
 
-type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number; lotId?: string };
+type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number; lotId?: string; addedAt?: string };
 
 @Component({
   selector: 'app-watchlist',
@@ -219,6 +221,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   private finnhubService = inject(FinnhubService);
   private notificationService = inject(NotificationService);
   private watchlistService = inject(WatchlistService);
+  private historyService = inject(HistoryService);
 
   heading = input.required<string>();
   watchlistName = input.required<string>();
@@ -475,8 +478,9 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   private buildEntries(): WatchlistEntry[] {
     return this.watchlistRows().map(r => {
       if (r.costBasis != null) {
-        const entry: { symbol: string; costBasis: number; shares?: number; lotId: string } = { symbol: r.symbol, costBasis: r.costBasis, lotId: r.lotId };
+        const entry: { symbol: string; costBasis: number; shares?: number; lotId: string; addedAt?: string } = { symbol: r.symbol, costBasis: r.costBasis, lotId: r.lotId };
         if (r.shares != null) entry.shares = r.shares;
+        if (r.addedAt != null) entry.addedAt = r.addedAt;
         return entry;
       }
       return r.symbol;
@@ -498,8 +502,8 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
       // Each entry is a lot; the same symbol may appear more than once (different cost/share).
       const lots = rawEntries.map(entry => typeof entry === 'string'
-        ? { lotId: entry, symbol: entry, costBasis: null as number | null, shares: null as number | null }
-        : { lotId: entry.lotId ?? crypto.randomUUID(), symbol: entry.symbol, costBasis: entry.costBasis, shares: entry.shares ?? null });
+        ? { lotId: entry, symbol: entry, costBasis: null as number | null, shares: null as number | null, addedAt: null as string | null }
+        : { lotId: entry.lotId ?? crypto.randomUUID(), symbol: entry.symbol, costBasis: entry.costBasis, shares: entry.shares ?? null, addedAt: entry.addedAt ?? null });
       const uniqueSymbols = [...new Set(lots.map(l => l.symbol))];
       this.symbols.set(uniqueSymbols);
       this.loadTrailingStops();
@@ -539,10 +543,11 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
+        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: lot.addedAt };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
+      this.prefetchEarningsDates();
     } finally {
       this.loading.set(false);
       this.initialized.set(true);
@@ -567,7 +572,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     const gainLoss = price !== null && costBasis !== null ? +(price - costBasis).toFixed(2) : null;
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
-    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null };
+    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: null };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -589,6 +594,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       this.symbols.update(s => [...s, upper]);
       this.watchlistRows.update(rows => [...rows, this.#buildRow(upper, snap, null, null)]);
       this.saveToStorage();
+      this.prefetchEarningsDates();
     } catch {
       // network/profile errors are non-fatal; the ticker simply isn't added
     }
@@ -737,9 +743,11 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         nextEarnings: null,
         nextEarningsLoaded: false,
         earningsSurprises: null,
+        addedAt: new Date().toISOString(),
       }]);
       this.clearInput();
       this.saveToStorage();
+      this.prefetchEarningsDates();
     } finally {
       this.adding.set(false);
     }
@@ -747,6 +755,23 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
   removeLot(row: WatchlistRow): void {
     const { lotId, symbol } = row;
+    // Log a realized-gains record when a real holding lot is sold off the Current Holdings list.
+    if (this.isCurrentHoldings() && row.costBasis !== null) {
+      this.historyService.addRecord({
+        symbol: row.symbol,
+        name: row.name,
+        sector: row.sector,
+        shares: row.shares,
+        costBasis: row.costBasis,
+        totalCost: row.totalCost,
+        sellPrice: row.price,
+        proceeds: row.marketValue,
+        gainLoss: row.gainLoss,
+        gainLossPercent: row.gainLossPercent,
+        totalGainLoss: row.totalGainLoss,
+        addedAt: row.addedAt,
+      });
+    }
     this.watchlistRows.update(rows => rows.filter(r => r.lotId !== lotId));
     this.expandedLots.update(s => { const next = new Set(s); next.delete(lotId); return next; });
     if (this.fullscreenLot() === lotId) this.fullscreenLot.set(null);
@@ -861,6 +886,22 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Prefetches just the next-earnings date for every row so rows can shade as earnings approach
+   *  (full earnings incl. surprises still load lazily on chart expand). Best-effort, sequential to be quota-friendly. */
+  private async prefetchEarningsDates(): Promise<void> {
+    const symbols = [...new Set(this.watchlistRows().map(r => r.symbol))];
+    for (const symbol of symbols) {
+      const row = this.watchlistRows().find(r => r.symbol === symbol);
+      if (!row || row.nextEarnings || row.nextEarningsLoaded) continue;
+      try {
+        const next = await firstValueFrom(this.finnhubService.getNextEarnings(symbol));
+        if (next) this.patchSymbol(symbol, { nextEarnings: next });
+      } catch {
+        // no shading if the date can't be fetched
+      }
+    }
+  }
+
   /** Most recent quarter's EPS surprise (last element, since surprises are oldest→newest). */
   latestSurprise(row: WatchlistRow): FinnhubEarningsSurprise | null {
     const list = row.earningsSurprises;
@@ -875,6 +916,13 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     const d = new Date(row.nextEarnings.date + 'T00:00:00');
     if (Number.isNaN(d.getTime())) return null;
     return Math.max(0, Math.round((d.getTime() - today.getTime()) / 86_400_000));
+  }
+
+  /** Row shading class as earnings approach (empty when >3 days out or unknown); brighter the closer the day. */
+  earningsRowClass(row: WatchlistRow): string {
+    const days = this.daysUntilEarnings(row);
+    if (days === null || days > 3) return '';
+    return `earnings-near earnings-d${days}`;
   }
 
   earningsHourLabel(hour: string): string {

@@ -1,0 +1,45 @@
+.hist-page { padding: 24px; }
+h2 { color: #e0e0e0; margin: 0 0 6px; font-size: 22px; }
+.subtitle { color: #8892b0; font-size: 13px; margin: 0 0 16px; max-width: 680px; }
+.hist-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.clear-btn { background: transparent; border: 1px solid #ff6b6b; color: #ff6b6b; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.clear-btn:hover { background: #ff6b6b; color: #fff; }
+.empty { color: #8892b0; font-size: 14px; }
+
+.hist-table { width: 100%; border-collapse: collapse; background: #16213e; border-radius: 10px; border: 1px solid #2a3a5e; overflow: hidden; }
+.hist-table th { text-align: left; padding: 10px 14px; color: #8892b0; font-size: 12px; font-weight: 600; border-bottom: 1px solid #2a3a5e; background: #0f1a30; white-space: nowrap; }
+.hist-table th.right { text-align: right; }
+.hist-table td { padding: 10px 14px; color: #e0e0e0; font-size: 13px; border-bottom: 1px solid #2a3a5e; white-space: nowrap; }
+.hist-table tbody tr:hover { background: #1a2748; }
+.right { text-align: right; }
+.symbol { font-weight: 600; color: #4a9eff; }
+.name { color: #a0a0b0; }
+.sector { color: #8892b0; }
+.date { color: #a0a0b0; }
+.positive { color: #28a745; }
+.negative { color: #dc3545; }
+
+.hist-table tfoot td { padding: 12px 14px; font-weight: 700; font-size: 14px; border-top: 2px solid #2a3a5e; background: #0f1a30; }
+.total-label { color: #8892b0; }
+.pct { font-size: 12px; font-weight: 600; margin-left: 4px; }
+
+.remove-btn { background: transparent; border: 1px solid #2a3a5e; color: #8892b0; border-radius: 5px; width: 22px; height: 22px; line-height: 1; font-size: 12px; cursor: pointer; padding: 0; }
+.remove-btn:hover { border-color: #ff6b6b; color: #ff6b6b; }
+
+.sell-cell { white-space: nowrap; }
+.sell-prefix { color: #8892b0; margin-right: 2px; }
+.sell-input {
+  width: 74px;
+  text-align: right;
+  background: #0f1a30;
+  color: #e0e0e0;
+  border: 1px solid #2a3a5e;
+  border-radius: 5px;
+  padding: 4px 6px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.sell-input:hover { border-color: #3a4d75; }
+.sell-input:focus { outline: none; border-color: #4a9eff; }
+.sell-input::-webkit-outer-spin-button,
+.sell-input::-webkit-inner-spin-button { margin: 0; }

@@ -187,6 +187,27 @@ h2 {
   color: #8892b0;
   font-size: 13px;
 }
+.watchlist-table .date-bought {
+  color: #a0a0b0;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.watchlist-table .etf-col {
+  text-align: center;
+  width: 1%;
+  white-space: nowrap;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.watchlist-table .etf-badge {
+  border: 1px solid #8892b0;
+  border-radius: 5px;
+  color: #8892b0;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(136, 146, 176, 0.08);
+}
 .watchlist-table .positive {
   color: #28a745;
 }
@@ -203,6 +224,15 @@ h2 {
 .clickable-row.expanded {
   background: rgba(74, 158, 255, 0.12);
 }
+/* Earnings-proximity shading: amber, brighter the closer to the report day (≤3 days out). */
+.clickable-row.earnings-near {
+  box-shadow: inset 3px 0 0 rgba(240, 192, 64, 0.9);
+}
+.clickable-row.earnings-d3 { background: rgba(240, 192, 64, 0.08); }
+.clickable-row.earnings-d2 { background: rgba(240, 192, 64, 0.15); }
+.clickable-row.earnings-d1 { background: rgba(240, 192, 64, 0.24); }
+.clickable-row.earnings-d0 { background: rgba(240, 192, 64, 0.34); }
+.clickable-row.earnings-near:hover { background: rgba(240, 192, 64, 0.42); }
 .chart-row td {
   padding: 0 16px 12px !important;
   border-bottom: 1px solid #2a3a5e;

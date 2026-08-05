@@ -1,0 +1,85 @@
+<div class="hist-page">
+  <h2>History</h2>
+  <p class="subtitle">
+    Closed-out holdings. A row is added here whenever you remove a ticker from Current Holdings,
+    recording your realized gain/loss along with when it was added and sold.
+  </p>
+
+  @if (rows().length) {
+    <div class="hist-actions">
+      <button class="clear-btn" (click)="clearAll()">Clear History</button>
+    </div>
+
+    <table class="hist-table">
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Company</th>
+          <th>Sector</th>
+          <th class="right">Shares</th>
+          <th class="right">Cost/Share</th>
+          <th class="right">Total Cost</th>
+          <th class="right">Sell Price</th>
+          <th class="right">Proceeds</th>
+          <th class="right">Gain/Loss</th>
+          <th class="right">Gain/Loss %</th>
+          <th class="right">Total G/L</th>
+          <th>Date Bought</th>
+          <th>Date Sold</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track trackById($index, row)) {
+          <tr>
+            <td class="symbol">{{ row.symbol }}</td>
+            <td class="name">{{ row.name }}</td>
+            <td class="sector">{{ row.sector }}</td>
+            <td class="right">{{ row.shares !== null ? (row.shares | number:'1.0-4') : '—' }}</td>
+            <td class="right">{{ row.costBasis !== null ? ('$' + (row.costBasis | number:'1.2-2')) : '—' }}</td>
+            <td class="right">{{ row.totalCost !== null ? ('$' + (row.totalCost | number:'1.2-2')) : '—' }}</td>
+            <td class="right sell-cell">
+              <span class="sell-prefix">$</span>
+              <input
+                type="number"
+                class="sell-input"
+                step="0.01"
+                min="0"
+                [value]="row.sellPrice"
+                (change)="updateSellPrice(row.id, $any($event.target).value)"
+                title="Edit the sell price"
+              />
+            </td>
+            <td class="right">{{ row.proceeds !== null ? ('$' + (row.proceeds | number:'1.2-2')) : '—' }}</td>
+            <td class="right" [class.positive]="(row.gainLoss ?? 0) >= 0" [class.negative]="(row.gainLoss ?? 0) < 0">
+              {{ row.gainLoss !== null ? ((row.gainLoss >= 0 ? '+$' : '-$') + (row.gainLoss >= 0 ? row.gainLoss : -row.gainLoss | number:'1.2-2')) : '—' }}
+            </td>
+            <td class="right" [class.positive]="(row.gainLossPercent ?? 0) >= 0" [class.negative]="(row.gainLossPercent ?? 0) < 0">
+              {{ row.gainLossPercent !== null ? ((row.gainLossPercent >= 0 ? '+' : '') + (row.gainLossPercent | number:'1.2-2') + '%') : '—' }}
+            </td>
+            <td class="right" [class.positive]="(row.totalGainLoss ?? 0) >= 0" [class.negative]="(row.totalGainLoss ?? 0) < 0">
+              {{ row.totalGainLoss !== null ? ((row.totalGainLoss >= 0 ? '+$' : '-$') + (row.totalGainLoss >= 0 ? row.totalGainLoss : -row.totalGainLoss | number:'1.2-2')) : '—' }}
+            </td>
+            <td class="date">{{ row.addedAt ? (row.addedAt | date:'mediumDate') : '—' }}</td>
+            <td class="date">{{ row.soldAt | date:'mediumDate' }}</td>
+            <td class="right">
+              <button type="button" class="remove-btn" title="Delete record" (click)="remove(row.id)">✕</button>
+            </td>
+          </tr>
+        }
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="10" class="right total-label">Realized Total</td>
+          <td class="right" [class.positive]="totalGainLoss() >= 0" [class.negative]="totalGainLoss() < 0">
+            {{ (totalGainLoss() >= 0 ? '+$' : '-$') + (totalGainLoss() >= 0 ? totalGainLoss() : -totalGainLoss() | number:'1.2-2') }}
+            <span class="pct">({{ totalGainLossPercent() >= 0 ? '+' : '' }}{{ totalGainLossPercent() | number:'1.2-2' }}%)</span>
+          </td>
+          <td colspan="3"></td>
+        </tr>
+      </tfoot>
+    </table>
+  } @else {
+    <p class="empty">No sold holdings yet. Remove a ticker from Current Holdings to record it here.</p>
+  }
+</div>
