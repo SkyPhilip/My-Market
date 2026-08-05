@@ -20,6 +20,34 @@ export interface FmpRatiosTtm {
   dividendYieldTTM?: number;
 }
 
+/** Latest annual balance sheet (FMP /stable/balance-sheet-statement). */
+export interface FmpBalanceSheet {
+  symbol: string;
+  date: string;
+  cashAndCashEquivalents?: number;
+  cashAndShortTermInvestments?: number;
+  totalDebt?: number;
+}
+
+/** Latest annual cash-flow statement (FMP /stable/cash-flow-statement). */
+export interface FmpCashFlow {
+  symbol: string;
+  date: string;
+  operatingCashFlow?: number;
+  netCashProvidedByOperatingActivities?: number;
+}
+
+/** "Cash value" breakdown: enterprise value (market cap + total debt − cash) minus one year of
+ *  operating cash flow. A negative `value` hints the price may be cheap relative to cash + debt +
+ *  operating cash generation. */
+export interface FmpCashValue {
+  marketCap: number | null;
+  totalDebt: number | null;
+  cash: number | null;
+  operatingCashFlow: number | null;
+  value: number | null;
+}
+
 export interface FmpPeer {
   symbol: string;
   companyName?: string;

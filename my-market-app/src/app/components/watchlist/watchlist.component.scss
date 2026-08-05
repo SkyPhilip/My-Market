@@ -192,6 +192,35 @@ h2 {
   font-size: 13px;
   white-space: nowrap;
 }
+.watchlist-table .date-bought-input {
+  background: #0f1a30;
+  color: #e0e0e0;
+  border: 1px solid #2a3a5e;
+  border-radius: 5px;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.watchlist-table .date-bought-input:hover { border-color: #3a4d75; }
+.watchlist-table .date-bought-input:focus { outline: none; border-color: #4a9eff; }
+.watchlist-table .date-bought-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
+}
+.watchlist-table .date-bought-value { margin-right: 6px; }
+.watchlist-table .date-edit-btn {
+  background: transparent;
+  border: 1px solid #2a3a5e;
+  color: #8892b0;
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.watchlist-table .date-edit-btn:hover { border-color: #4a9eff; color: #4a9eff; }
 .watchlist-table .etf-col {
   text-align: center;
   width: 1%;

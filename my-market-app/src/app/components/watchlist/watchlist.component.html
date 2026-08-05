@@ -74,6 +74,9 @@
           @if (!isCurrentHoldings()) {
             <th class="sortable" (click)="sortBy('pegy')">PEGY <span class="sort-icon">{{ sortIcon('pegy') }}</span></th>
           }
+          @if (!isCurrentHoldings()) {
+            <th class="value-col" [title]="cashValueTooltip">Value</th>
+          }
           <th class="sortable" (click)="sortBy('dividendYield')">Div Yield <span class="sort-icon">{{ sortIcon('dividendYield') }}</span></th>
           @if (hasCostBasis()) {
             <th class="sortable" (click)="sortBy('totalCost')">Total Cost <span class="sort-icon">{{ sortIcon('totalCost') }}</span></th>
@@ -129,6 +132,17 @@
               }
             </td>
             }
+            @if (!isCurrentHoldings()) {
+            <td class="price">
+              @if (row.cashValueLoading) {
+                <span class="pegy-pending">…</span>
+              } @else if (row.cashValueLoaded) {
+                <button type="button" class="value-btn computed" [class.undervalued]="row.cashValue !== null && row.cashValue < 0" [title]="cashValueTitle(row)" (click)="loadCashValue(row.symbol); $event.stopPropagation()">{{ formatCompactMoney(row.cashValue) }}</button>
+              } @else {
+                <button type="button" class="value-btn" [title]="cashValueTooltip" (click)="loadCashValue(row.symbol); $event.stopPropagation()">Value</button>
+              }
+            </td>
+            }
             <td class="price">{{ row.dividendYield !== null ? ((row.dividendYield | number:'1.2-2') + '%') : '—' }}</td>
             @if (hasCostBasis()) {
               <td class="price">{{ row.totalCost !== null ? ('$' + (row.totalCost | number:'1.2-2')) : '—' }}</td>
@@ -146,7 +160,27 @@
               <td class="price">
                 {{ weight !== null ? ((weight | number:'1.2-2') + '%') : '—' }}
               </td>
-              <td class="date-bought">{{ row.addedAt ? (row.addedAt | date:'mediumDate') : '—' }}</td>
+              <td class="date-bought">
+                @if (row.addedAt && !isEditingDateBought(row.lotId)) {
+                  <span class="date-bought-value">{{ row.addedAt | date:'mediumDate' }}</span>
+                  <button
+                    type="button"
+                    class="date-edit-btn"
+                    title="Edit date bought"
+                    (click)="startEditDateBought(row.lotId); $event.stopPropagation()"
+                  >✎</button>
+                } @else {
+                  <input
+                    type="date"
+                    class="date-bought-input"
+                    [max]="todayIso()"
+                    [value]="addedAtInputValue(row)"
+                    (change)="setDateBought(row, $any($event.target).value)"
+                    (click)="$event.stopPropagation()"
+                    title="Set the actual date bought"
+                  />
+                }
+              </td>
             }
             <td class="news-col">
               <button
@@ -171,7 +205,7 @@
           </tr>
           @if (isExpanded(row.lotId)) {
             <tr class="chart-row">
-              <td [attr.colspan]="(hasCostBasis() ? 20 : 11) - (isCurrentHoldings() ? 1 : 0)">
+              <td [attr.colspan]="(hasCostBasis() ? 20 : 11) + (isCurrentHoldings() ? -1 : 1)">
                 @if (row.chartLoading) {
                   <p class="chart-loading">Loading chart...</p>
                 } @else {

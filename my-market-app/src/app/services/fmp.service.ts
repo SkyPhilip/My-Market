@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, from, of, forkJoin } from 'rxjs';
 import { map, tap, mergeMap, toArray, catchError, switchMap } from 'rxjs/operators';
-import { FmpAnalystEstimate, FmpPeer, FmpProfile, FmpRatiosTtm, FmpScreenerResult, FmpSectorPerformance, HighYieldStock } from '../models/fmp.models';
+import { FmpAnalystEstimate, FmpBalanceSheet, FmpCashFlow, FmpCashValue, FmpPeer, FmpProfile, FmpRatiosTtm, FmpScreenerResult, FmpSectorPerformance, HighYieldStock } from '../models/fmp.models';
 import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -32,6 +32,7 @@ export class FmpService {
   #profileFetched = new Set<string>();
   #pegyCache = new Map<string, number | null>();
   #peersCache = new Map<string, string | null>();
+  #cashValueCache = new Map<string, FmpCashValue | null>();
 
   constructor(private http: HttpClient) {
     this.#loadCacheFromStorage();
@@ -241,6 +242,44 @@ export class FmpService {
         }
         return new Map(uniqueSymbols.map(symbol => [symbol, this.#pegyCache.get(symbol) ?? null]));
       })
+    );
+  }
+
+  /** Enterprise value (market cap + total debt − cash) minus latest annual operating cash flow (all in dollars).
+   *  Negative → price may be cheap relative to cash + debt + operating cash generation. Cached per session. */
+  getCashValue(symbol: string): Observable<FmpCashValue | null> {
+    const upper = symbol.trim().toUpperCase();
+    if (!upper) return of(null);
+    if (this.#cashValueCache.has(upper)) {
+      return of(this.#cashValueCache.get(upper) ?? null);
+    }
+    return forkJoin({
+      profile: this.http.get<FmpProfile[]>(`${this.#baseUrl}/profile`, {
+        params: { symbol: upper, apikey: this.#apiKey }
+      }).pipe(map(arr => arr[0] ?? null), catchError(() => of<FmpProfile | null>(null))),
+      balance: this.http.get<FmpBalanceSheet[]>(`${this.#baseUrl}/balance-sheet-statement`, {
+        params: { symbol: upper, period: 'annual', limit: '1', apikey: this.#apiKey }
+      }).pipe(map(arr => arr[0] ?? null), catchError(() => of<FmpBalanceSheet | null>(null))),
+      cashFlow: this.http.get<FmpCashFlow[]>(`${this.#baseUrl}/cash-flow-statement`, {
+        params: { symbol: upper, period: 'annual', limit: '1', apikey: this.#apiKey }
+      }).pipe(map(arr => arr[0] ?? null), catchError(() => of<FmpCashFlow | null>(null))),
+    }).pipe(
+      map(({ profile, balance, cashFlow }) => {
+        const marketCap = typeof profile?.marketCap === 'number' && Number.isFinite(profile.marketCap) ? profile.marketCap : null;
+        const cash = balance?.cashAndCashEquivalents ?? balance?.cashAndShortTermInvestments ?? null;
+        // A loaded balance sheet with no debt field means the company carries no debt (0), not "unknown".
+        const totalDebt = typeof balance?.totalDebt === 'number' && Number.isFinite(balance.totalDebt)
+          ? balance.totalDebt
+          : (balance ? 0 : null);
+        const operatingCashFlow = cashFlow?.operatingCashFlow ?? cashFlow?.netCashProvidedByOperatingActivities ?? null;
+        const value = marketCap !== null && totalDebt !== null && cash !== null && operatingCashFlow !== null
+          ? +(marketCap + totalDebt - cash - operatingCashFlow).toFixed(2)
+          : null;
+        const result: FmpCashValue = { marketCap, totalDebt, cash, operatingCashFlow, value };
+        this.#cashValueCache.set(upper, result);
+        return result;
+      }),
+      catchError(() => of<FmpCashValue | null>(null))
     );
   }
 

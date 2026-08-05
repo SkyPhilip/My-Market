@@ -8,6 +8,7 @@ import { FinnhubService } from '../../services/finnhub.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaErrorBody, AlpacaBarsResponse, AlpacaSnapshotsResponse, AlpacaSnapshot } from '../../models/alpaca.models';
 import { FinnhubNewsArticle, FinnhubMetrics, FinnhubRecommendation, FinnhubEarningsDate, FinnhubEarningsSurprise } from '../../models/finnhub.models';
+import { FmpCashValue } from '../../models/fmp.models';
 import { ChartComponent, DivergenceType } from '../chart/chart.component';
 import { NotificationService } from '../../services/notification.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -195,6 +196,10 @@ interface WatchlistRow {
   nextEarningsLoaded: boolean;
   earningsSurprises: FinnhubEarningsSurprise[] | null;
   addedAt: string | null;
+  cashValue: number | null;
+  cashValueLoading: boolean;
+  cashValueLoaded: boolean;
+  cashValueBreakdown: FmpCashValue | null;
 }
 
 type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'dividendYield' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'weightPercent';
@@ -403,6 +408,35 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     return +((row.totalCost / totalCost) * 100).toFixed(2);
   }
 
+  /** Today as YYYY-MM-DD (local), used to cap the Date Bought picker (no future buys). */
+  todayIso(): string {
+    return new Date().toLocaleDateString('en-CA');
+  }
+
+  /** A lot's addedAt as YYYY-MM-DD (local) to prefill the Date Bought picker; '' when unset. */
+  addedAtInputValue(row: WatchlistRow): string {
+    return row.addedAt ? new Date(row.addedAt).toLocaleDateString('en-CA') : '';
+  }
+
+  /** Lots whose Date Bought is currently being edited (picker shown beside a set value). */
+  editingDateLots = signal<Set<string>>(new Set());
+
+  isEditingDateBought(lotId: string): boolean {
+    return this.editingDateLots().has(lotId);
+  }
+
+  startEditDateBought(lotId: string): void {
+    this.editingDateLots.update(s => new Set(s).add(lotId));
+  }
+
+  /** Records a lot's actual buy date from the inline picker (shown when addedAt is unset or being edited). */
+  setDateBought(row: WatchlistRow, value: string): void {
+    if (!value) return;
+    this.patchRow(row.lotId, { addedAt: new Date(`${value}T12:00:00`).toISOString() });
+    this.editingDateLots.update(s => { const next = new Set(s); next.delete(row.lotId); return next; });
+    this.saveToStorage();
+  }
+
   canSubmitSymbol(): boolean {
     if (!this.newSymbol.trim()) return false;
     if (!this.isCurrentHoldings()) return true;
@@ -543,7 +577,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: lot.addedAt };
+        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: lot.addedAt, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -572,7 +606,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     const gainLoss = price !== null && costBasis !== null ? +(price - costBasis).toFixed(2) : null;
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
-    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: null };
+    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: null, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -744,6 +778,10 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         nextEarningsLoaded: false,
         earningsSurprises: null,
         addedAt: new Date().toISOString(),
+        cashValue: null,
+        cashValueLoading: false,
+        cashValueLoaded: false,
+        cashValueBreakdown: null,
       }]);
       this.clearInput();
       this.saveToStorage();
@@ -961,6 +999,46 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         r.symbol === symbol ? { ...r, pegyLoading: false } : r
       ));
     }
+  }
+
+  readonly cashValueTooltip = 'Value = market cap + total debt \u2212 cash on hand \u2212 latest annual operating cash flow.\nAll dollars. A NEGATIVE result may signal the price is cheap relative to cash + debt + operating cash generation.';
+
+  /** Lazily fetches the cash-value metric (market cap \u2212 cash \u2212 operating cash flow) for a symbol. */
+  async loadCashValue(symbol: string): Promise<void> {
+    this.watchlistRows.update(rows => rows.map(r =>
+      r.symbol === symbol ? { ...r, cashValueLoading: true } : r
+    ));
+    try {
+      const result = await firstValueFrom(this.fmpService.getCashValue(symbol));
+      this.watchlistRows.update(rows => rows.map(r =>
+        r.symbol === symbol
+          ? { ...r, cashValue: result?.value ?? null, cashValueBreakdown: result ?? null, cashValueLoaded: true, cashValueLoading: false }
+          : r
+      ));
+    } catch {
+      this.watchlistRows.update(rows => rows.map(r =>
+        r.symbol === symbol ? { ...r, cashValueLoading: false } : r
+      ));
+    }
+  }
+
+  /** Compact dollar formatting (e.g. -$1.24B) for the cash-value cell/tooltip. */
+  formatCompactMoney(v: number | null): string {
+    if (v === null || !Number.isFinite(v)) return 'N/A';
+    const sign = v < 0 ? '\u2212' : '';
+    const abs = Math.abs(v);
+    if (abs >= 1e12) return `${sign}$${(abs / 1e12).toFixed(2)}T`;
+    if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
+    if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(2)}M`;
+    if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(2)}K`;
+    return `${sign}$${abs.toFixed(0)}`;
+  }
+
+  /** Multi-line tooltip breaking down a row's cash-value inputs (falls back to the generic help text). */
+  cashValueTitle(row: WatchlistRow): string {
+    const b = row.cashValueBreakdown;
+    if (!b) return this.cashValueTooltip;
+    return `Market cap: ${this.formatCompactMoney(b.marketCap)}\n+ Total debt: ${this.formatCompactMoney(b.totalDebt)}\n\u2212 Cash on hand: ${this.formatCompactMoney(b.cash)}\n\u2212 Operating cash flow: ${this.formatCompactMoney(b.operatingCashFlow)}\n= ${this.formatCompactMoney(b.value)}`;
   }
 
   toggleMacd(lotId: string): void {
