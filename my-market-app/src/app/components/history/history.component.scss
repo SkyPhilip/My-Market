@@ -43,3 +43,16 @@ h2 { color: #e0e0e0; margin: 0 0 6px; font-size: 22px; }
 .sell-input:focus { outline: none; border-color: #4a9eff; }
 .sell-input::-webkit-outer-spin-button,
 .sell-input::-webkit-inner-spin-button { margin: 0; }
+
+.date-input {
+  background: #0f1a30;
+  color: #e0e0e0;
+  border: 1px solid #2a3a5e;
+  border-radius: 5px;
+  padding: 4px 6px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.date-input:hover { border-color: #3a4d75; }
+.date-input:focus { outline: none; border-color: #4a9eff; }
+.date-input::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }

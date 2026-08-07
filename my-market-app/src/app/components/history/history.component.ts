@@ -40,6 +40,19 @@ export class HistoryComponent {
     this.historyService.updateSellPrice(id, value.trim() !== '' && Number.isFinite(parsed) ? parsed : null);
   }
 
+  /** Applies an edited sold date (from the inline date input, `YYYY-MM-DD`). */
+  updateSoldAt(id: string, value: string): void {
+    if (!value) return;
+    const iso = new Date(value + 'T00:00:00').toISOString();
+    this.historyService.updateSoldAt(id, iso);
+  }
+
+  /** Formats an ISO timestamp as `YYYY-MM-DD` for the date input's value. */
+  toDateInputValue(iso: string): string {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  }
+
   clearAll(): void {
     if (confirm('Clear the entire holdings history? This cannot be undone.')) {
       this.historyService.clear();

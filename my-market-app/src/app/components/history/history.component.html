@@ -61,7 +61,15 @@
               {{ row.totalGainLoss !== null ? ((row.totalGainLoss >= 0 ? '+$' : '-$') + (row.totalGainLoss >= 0 ? row.totalGainLoss : -row.totalGainLoss | number:'1.2-2')) : '—' }}
             </td>
             <td class="date">{{ row.addedAt ? (row.addedAt | date:'mediumDate') : '—' }}</td>
-            <td class="date">{{ row.soldAt | date:'mediumDate' }}</td>
+            <td class="date">
+              <input
+                type="date"
+                class="date-input"
+                [value]="toDateInputValue(row.soldAt)"
+                (change)="updateSoldAt(row.id, $any($event.target).value)"
+                title="Edit the date sold"
+              />
+            </td>
             <td class="right">
               <button type="button" class="remove-btn" title="Delete record" (click)="remove(row.id)">✕</button>
             </td>

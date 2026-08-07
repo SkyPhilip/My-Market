@@ -58,6 +58,15 @@ export class HistoryService {
     });
   }
 
+  /** Overrides the date a lot was sold. Accepts an ISO timestamp. */
+  updateSoldAt(id: string, soldAt: string): void {
+    this.records.update(rows => {
+      const next = rows.map(r => r.id === id ? { ...r, soldAt } : r);
+      this.#save(next);
+      return next;
+    });
+  }
+
   #withSellPrice(record: HistoryRecord, sellPrice: number | null): HistoryRecord {
     const price = sellPrice !== null && Number.isFinite(sellPrice) ? +sellPrice.toFixed(2) : null;
     const proceeds = price !== null && record.shares !== null ? +(price * record.shares).toFixed(2) : null;
