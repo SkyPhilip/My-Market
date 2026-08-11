@@ -35,6 +35,27 @@ interface RangeLevels {
   swingLow: number | null;
 }
 
+type StopMode = 'trailing' | 'limit';
+
+interface LotStopConfig {
+  mode: StopMode;
+  /** Trailing distance below the peak, in percent (trailing mode only). */
+  pct: number;
+  /** Highest price seen since the stop was set (trailing mode only). */
+  peak: number;
+  /** Price level that triggers the alert (trailing stop level, or the limit price). */
+  stop: number;
+  /** Limit mode only: alert when price rises to `stop` (true) or falls to it (false). */
+  above: boolean;
+  expiry: number;
+  /** 'triggered' once the price has crossed the level; stays until dismissed. */
+  status: 'active' | 'triggered';
+  /** Epoch ms when the alert fired. */
+  triggeredAt?: number;
+  /** Price that crossed the level. */
+  triggerPrice?: number;
+}
+
 function buildVolumeProfile(bars: Array<{ l: number; h: number; c: number; v: number }>, binCount = 24): VolumeProfileBin[] {
   if (!bars.length) return [];
 
@@ -196,6 +217,7 @@ interface WatchlistRow {
   nextEarningsLoaded: boolean;
   earningsSurprises: FinnhubEarningsSurprise[] | null;
   addedAt: string | null;
+  platform: string | null;
   cashValue: number | null;
   cashValueLoading: boolean;
   cashValueLoaded: boolean;
@@ -205,7 +227,21 @@ interface WatchlistRow {
 type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'dividendYield' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'weightPercent';
 type SortDirection = 'asc' | 'desc';
 
-type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number; lotId?: string; addedAt?: string };
+type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number; lotId?: string; addedAt?: string; platform?: string };
+
+interface PlatformOption {
+  id: string;
+  label: string;
+  short: string;
+  color: string;
+}
+
+/** Brokerage platforms a holding can live on. Add entries here to offer more. */
+const PLATFORMS: PlatformOption[] = [
+  { id: 'schwab', label: 'Schwab', short: 'SCHW', color: '#00a0df' },
+  { id: 'jpmorgan', label: 'JP Morgan', short: 'JPM', color: '#b58a3e' },
+  { id: 'other', label: 'Other', short: 'OTHER', color: '#8892b0' },
+];
 
 @Component({
   selector: 'app-watchlist',
@@ -254,8 +290,11 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   newSymbol = '';
   newShares = '';
   newCostBasis = '';
+  newPlatform = PLATFORMS[0].id;
   adding = signal(false);
   addError = signal<string | null>(null);
+
+  readonly platforms = PLATFORMS;
 
   hasCostBasis = computed(() => this.watchlistRows().some(r => r.costBasis !== null));
 
@@ -289,9 +328,11 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   openingRangeSymbols = signal<Set<string>>(new Set());
   openingRangeNarrowSymbols = signal<Set<string>>(new Set());
   costBasisSymbols = signal<Set<string>>(new Set());
-  trailingStops = signal<Map<string, { pct: number; peak: number; stop: number; expiry: number }>>(new Map());
+  trailingStops = signal<Map<string, LotStopConfig>>(new Map());
   readonly trailingStopForm = signal<{ lotId: string; symbol: string; price: number } | null>(null);
+  readonly tsMode = signal<StopMode>('trailing');
   tsPctInput = '';
+  tsLimitInput = '';
   tsExpiryInput = '';
   readonly newsPanelOpen = signal(false);
   readonly newsSymbol = signal<string>('');
@@ -393,6 +434,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     this.newSymbol = '';
     this.newShares = '';
     this.newCostBasis = '';
+    this.newPlatform = PLATFORMS[0].id;
     this.addError.set(null);
   }
 
@@ -437,6 +479,29 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     this.saveToStorage();
   }
 
+  /** Platform metadata for a lot's stored id (null when unset or unknown). */
+  platformFor(id: string | null): PlatformOption | null {
+    return id ? this.platforms.find(p => p.id === id) ?? null : null;
+  }
+
+  /** Lots whose platform is currently being edited (inline dropdown shown). */
+  editingPlatformLots = signal<Set<string>>(new Set());
+
+  isEditingPlatform(lotId: string): boolean {
+    return this.editingPlatformLots().has(lotId);
+  }
+
+  startEditPlatform(lotId: string): void {
+    this.editingPlatformLots.update(s => new Set(s).add(lotId));
+  }
+
+  /** Assigns (or clears) a lot's platform from the inline dropdown. */
+  setPlatform(row: WatchlistRow, id: string): void {
+    this.patchRow(row.lotId, { platform: id || null });
+    this.editingPlatformLots.update(s => { const next = new Set(s); next.delete(row.lotId); return next; });
+    this.saveToStorage();
+  }
+
   canSubmitSymbol(): boolean {
     if (!this.newSymbol.trim()) return false;
     if (!this.isCurrentHoldings()) return true;
@@ -472,7 +537,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   private loadTrailingStops(): void {
     const raw = localStorage.getItem(this.trailingStopStorageKey);
     if (!raw) { this.trailingStops.set(new Map()); return; }
-    let parsed: Record<string, { pct: number; peak: number; stop: number; expiry: number }>;
+    let parsed: Record<string, Partial<LotStopConfig>>;
     try {
       parsed = JSON.parse(raw);
     } catch {
@@ -480,10 +545,21 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       return;
     }
     const now = Date.now();
-    const map = new Map<string, { pct: number; peak: number; stop: number; expiry: number }>();
+    const map = new Map<string, LotStopConfig>();
     for (const [symbol, cfg] of Object.entries(parsed)) {
-      if (cfg && typeof cfg.pct === 'number' && typeof cfg.expiry === 'number' && cfg.expiry > now) {
-        map.set(symbol, cfg);
+      const triggered = cfg?.status === 'triggered';
+      if (cfg && typeof cfg.stop === 'number' && typeof cfg.expiry === 'number' && (triggered || cfg.expiry > now)) {
+        map.set(symbol, {
+          mode: cfg.mode === 'limit' ? 'limit' : 'trailing',
+          pct: typeof cfg.pct === 'number' ? cfg.pct : 0,
+          peak: typeof cfg.peak === 'number' ? cfg.peak : cfg.stop,
+          stop: cfg.stop,
+          above: cfg.above === true,
+          expiry: cfg.expiry,
+          status: triggered ? 'triggered' : 'active',
+          triggeredAt: typeof cfg.triggeredAt === 'number' ? cfg.triggeredAt : undefined,
+          triggerPrice: typeof cfg.triggerPrice === 'number' ? cfg.triggerPrice : undefined,
+        });
       }
     }
     this.trailingStops.set(map);
@@ -491,7 +567,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   }
 
   private saveTrailingStops(): void {
-    const obj: Record<string, { pct: number; peak: number; stop: number; expiry: number }> = {};
+    const obj: Record<string, LotStopConfig> = {};
     for (const [symbol, cfg] of this.trailingStops()) {
       obj[symbol] = cfg;
     }
@@ -512,9 +588,10 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   private buildEntries(): WatchlistEntry[] {
     return this.watchlistRows().map(r => {
       if (r.costBasis != null) {
-        const entry: { symbol: string; costBasis: number; shares?: number; lotId: string; addedAt?: string } = { symbol: r.symbol, costBasis: r.costBasis, lotId: r.lotId };
+        const entry: { symbol: string; costBasis: number; shares?: number; lotId: string; addedAt?: string; platform?: string } = { symbol: r.symbol, costBasis: r.costBasis, lotId: r.lotId };
         if (r.shares != null) entry.shares = r.shares;
         if (r.addedAt != null) entry.addedAt = r.addedAt;
+        if (r.platform != null) entry.platform = r.platform;
         return entry;
       }
       return r.symbol;
@@ -536,8 +613,8 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
       // Each entry is a lot; the same symbol may appear more than once (different cost/share).
       const lots = rawEntries.map(entry => typeof entry === 'string'
-        ? { lotId: entry, symbol: entry, costBasis: null as number | null, shares: null as number | null, addedAt: null as string | null }
-        : { lotId: entry.lotId ?? crypto.randomUUID(), symbol: entry.symbol, costBasis: entry.costBasis, shares: entry.shares ?? null, addedAt: entry.addedAt ?? null });
+        ? { lotId: entry, symbol: entry, costBasis: null as number | null, shares: null as number | null, addedAt: null as string | null, platform: null as string | null }
+        : { lotId: entry.lotId ?? crypto.randomUUID(), symbol: entry.symbol, costBasis: entry.costBasis, shares: entry.shares ?? null, addedAt: entry.addedAt ?? null, platform: entry.platform ?? null });
       const uniqueSymbols = [...new Set(lots.map(l => l.symbol))];
       this.symbols.set(uniqueSymbols);
       this.loadTrailingStops();
@@ -577,7 +654,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: lot.addedAt, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
+        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: lot.addedAt, platform: lot.platform, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -606,7 +683,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     const gainLoss = price !== null && costBasis !== null ? +(price - costBasis).toFixed(2) : null;
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
-    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: null, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
+    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: null, platform: null, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -778,6 +855,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         nextEarningsLoaded: false,
         earningsSurprises: null,
         addedAt: new Date().toISOString(),
+        platform: requiresHoldingInputs ? this.newPlatform : null,
         cashValue: null,
         cashValueLoading: false,
         cashValueLoaded: false,
@@ -1362,6 +1440,55 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     return this.trailingStops().get(lotId)?.pct ?? null;
   }
 
+  /** Alert mode for a lot (null if none set). */
+  trailingStopMode(lotId: string): StopMode | null {
+    return this.trailingStops().get(lotId)?.mode ?? null;
+  }
+
+  /** Button/chart label reflecting the configured alert type. */
+  trailingStopLabel(lotId: string): string {
+    return this.trailingStopMode(lotId) === 'limit' ? 'Limit' : 'Trailing Stop';
+  }
+
+  /** Whether a lot's stop/limit has fired (badge shown until dismissed). */
+  trailingStopTriggered(lotId: string): boolean {
+    return this.trailingStops().get(lotId)?.status === 'triggered';
+  }
+
+  /** Whether a fired lot was an upside limit target (green) vs a downside stop (red). */
+  trailingStopHitUp(lotId: string): boolean {
+    const cfg = this.trailingStops().get(lotId);
+    return cfg?.mode === 'limit' && cfg.above === true;
+  }
+
+  /** Short badge label for a fired lot. */
+  stopBadgeLabel(lotId: string): string {
+    return this.trailingStopHitUp(lotId) ? 'TARGET HIT' : 'STOP HIT';
+  }
+
+  /** Row shading class when a stop/limit has fired. */
+  stopRowClass(lotId: string): string {
+    if (!this.trailingStopTriggered(lotId)) return '';
+    return this.trailingStopHitUp(lotId) ? 'stop-hit-row stop-hit-row--up' : 'stop-hit-row';
+  }
+
+  /** Tooltip describing how and when a lot's alert fired. */
+  stopHitTooltip(lotId: string): string {
+    const cfg = this.trailingStops().get(lotId);
+    if (!cfg || cfg.status !== 'triggered') return '';
+    const level = cfg.stop.toFixed(2);
+    const kind = cfg.mode === 'limit' ? `limit $${level}` : `${cfg.pct}% trailing stop ($${level})`;
+    const at = cfg.triggerPrice != null ? ` at $${cfg.triggerPrice.toFixed(2)}` : '';
+    const when = cfg.triggeredAt ? ` on ${new Date(cfg.triggeredAt).toLocaleDateString('en-CA')}` : '';
+    return `Hit ${kind}${at}${when} — click to dismiss`;
+  }
+
+  /** Clears a fired stop/limit badge for a lot. */
+  dismissTrailingStop(lotId: string): void {
+    this.trailingStops.update(m => { const next = new Map(m); next.delete(lotId); return next; });
+    this.saveTrailingStops();
+  }
+
   /** Prompts (via a modal with a calendar) for a trailing stop percentage and expiry, or clears an existing one. */
   toggleTrailingStop(lotId: string): void {
     if (this.trailingStops().has(lotId)) {
@@ -1375,7 +1502,9 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       this.notificationService.showError('Current price unavailable; cannot set a trailing stop.');
       return;
     }
+    this.tsMode.set('trailing');
     this.tsPctInput = '';
+    this.tsLimitInput = price.toFixed(2);
     this.tsExpiryInput = new Date(Date.now() + 30 * 86_400_000).toLocaleDateString('en-CA');
     this.trailingStopForm.set({ lotId, symbol: row.symbol, price });
   }
@@ -1389,15 +1518,10 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     this.trailingStopForm.set(null);
   }
 
-  /** Validates the modal inputs and creates the persisted trailing stop. */
+  /** Validates the modal inputs and creates the persisted trailing stop or limit alert. */
   confirmTrailingStop(): void {
     const form = this.trailingStopForm();
     if (!form) return;
-    const pct = Number(this.tsPctInput);
-    if (!Number.isFinite(pct) || pct <= 0 || pct >= 100) {
-      this.notificationService.showError('Enter a valid trailing stop percentage between 0 and 100.');
-      return;
-    }
     if (!this.tsExpiryInput) {
       this.notificationService.showError('Choose an expiry date.');
       return;
@@ -1408,10 +1532,26 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       return;
     }
     const { lotId, price } = form;
-    const stop = +(price * (1 - pct / 100)).toFixed(4);
+    let config: LotStopConfig;
+    if (this.tsMode() === 'limit') {
+      const limit = Number(this.tsLimitInput);
+      if (!Number.isFinite(limit) || limit <= 0) {
+        this.notificationService.showError('Enter a valid limit price above 0.');
+        return;
+      }
+      config = { mode: 'limit', pct: 0, peak: price, stop: +limit.toFixed(4), above: limit >= price, expiry, status: 'active' };
+    } else {
+      const pct = Number(this.tsPctInput);
+      if (!Number.isFinite(pct) || pct <= 0 || pct >= 100) {
+        this.notificationService.showError('Enter a valid trailing stop percentage between 0 and 100.');
+        return;
+      }
+      const stop = +(price * (1 - pct / 100)).toFixed(4);
+      config = { mode: 'trailing', pct, peak: price, stop, above: false, expiry, status: 'active' };
+    }
     this.trailingStops.update(m => {
       const next = new Map(m);
-      next.set(lotId, { pct, peak: price, stop, expiry });
+      next.set(lotId, config);
       return next;
     });
     this.saveTrailingStops();
@@ -1420,22 +1560,29 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     if (row) this.ensureLotExpanded(row);
   }
 
-  /** Ratchets the stop up with new highs; removes it (from storage) when the price crosses it or it expires. */
+  /** Ratchets the stop up with new highs; marks it triggered (kept in storage) when the price crosses it, or drops it on expiry. */
   private evaluateTrailingStop(lotId: string, latestPrice: number): void {
     const config = this.trailingStops().get(lotId);
-    if (!config) return;
+    if (!config || config.status === 'triggered') return;
     const symbol = this.watchlistRows().find(r => r.lotId === lotId)?.symbol ?? '';
     if (Date.now() >= config.expiry) {
       this.trailingStops.update(m => { const next = new Map(m); next.delete(lotId); return next; });
       this.saveTrailingStops();
-      this.notificationService.showInfo(`${symbol} trailing stop expired.`);
+      this.notificationService.showInfo(`${symbol} ${config.mode === 'limit' ? 'limit' : 'trailing stop'} expired.`);
+      return;
+    }
+    if (config.mode === 'limit') {
+      const hit = config.above ? latestPrice >= config.stop : latestPrice <= config.stop;
+      if (hit) {
+        this.markStopTriggered(lotId, config, config.stop, latestPrice);
+        this.notificationService.showError(`${symbol} hit its limit of $${config.stop.toFixed(2)} (price $${latestPrice.toFixed(2)}).`);
+      }
       return;
     }
     const peak = Math.max(config.peak, latestPrice);
     const stop = +(peak * (1 - config.pct / 100)).toFixed(4);
     if (latestPrice <= stop) {
-      this.trailingStops.update(m => { const next = new Map(m); next.delete(lotId); return next; });
-      this.saveTrailingStops();
+      this.markStopTriggered(lotId, config, stop, latestPrice);
       this.notificationService.showError(`${symbol} hit its ${config.pct}% trailing stop at $${stop.toFixed(2)} (price $${latestPrice.toFixed(2)}).`);
       return;
     }
@@ -1447,6 +1594,16 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       });
       this.saveTrailingStops();
     }
+  }
+
+  /** Freezes a fired alert at its trigger level and marks it triggered so it persists as a row badge. */
+  private markStopTriggered(lotId: string, config: LotStopConfig, stop: number, triggerPrice: number): void {
+    this.trailingStops.update(m => {
+      const next = new Map(m);
+      next.set(lotId, { ...config, stop, status: 'triggered', triggeredAt: Date.now(), triggerPrice });
+      return next;
+    });
+    this.saveTrailingStops();
   }
 
   async openNews(symbol: string): Promise<void> {

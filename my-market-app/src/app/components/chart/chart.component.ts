@@ -106,6 +106,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() costBasis: number | null = null;
   @Input() showTrailingStop = false;
   @Input() trailingStop: number | null = null;
+  @Input() trailingStopLabel = 'Trailing Stop';
   @Input() peerData: LineData<Time>[] = [];
   @Input() showPeer = false;
   @Input() showSessionShade = false;
@@ -182,7 +183,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     if ((changes['showCostBasis'] || changes['costBasis'] || changes['data']) && this.chart) {
       this.updateCostBasisLine();
     }
-    if ((changes['showTrailingStop'] || changes['trailingStop'] || changes['data']) && this.chart) {
+    if ((changes['showTrailingStop'] || changes['trailingStop'] || changes['trailingStopLabel'] || changes['data']) && this.chart) {
       this.updateTrailingStopLine();
     }
     if ((changes['showSessionShade'] || changes['sessionShadeUntil'] || changes['data']) && this.sessionShade) {
@@ -565,6 +566,8 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
 
   private updateTrailingStopLine(): void {
     if (!this.trailingStopSeries) return;
+
+    this.trailingStopSeries.applyOptions({ title: this.trailingStopLabel });
 
     if (!this.showTrailingStop || this.trailingStop === null || this.data.length < 2) {
       this.trailingStopSeries.setData([]);

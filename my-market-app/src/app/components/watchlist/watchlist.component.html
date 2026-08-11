@@ -37,6 +37,17 @@
           step="0.01"
           [disabled]="adding()"
         />
+        <select
+          [(ngModel)]="newPlatform"
+          name="platform"
+          class="watchlist-input holding-input platform-input"
+          [disabled]="adding()"
+          title="Platform this lot is held on"
+        >
+          @for (p of platforms; track p.id) {
+            <option [value]="p.id">{{ p.label }}</option>
+          }
+        </select>
       }
       <button type="submit" class="watchlist-btn add-btn" [disabled]="!canSubmitSymbol() || adding()">Add</button>
     </form>
@@ -94,10 +105,50 @@
       <tbody>
         @for (row of sortedWatchlistRows(); track row.lotId) {
           <tr class="clickable-row" [class.expanded]="isExpanded(row.lotId)" [ngClass]="earningsRowClass(row)"
+            [class.stop-hit-row]="trailingStopTriggered(row.lotId)"
+            [class.stop-hit-row--up]="trailingStopHitUp(row.lotId)"
             [title]="daysUntilEarnings(row) !== null && daysUntilEarnings(row)! <= 3 ? (row.symbol + ' reports earnings in ' + daysUntilEarnings(row) + ' day(s)') : ''"
             (click)="toggleChart(row)">
             <td class="symbol">
               <span class="symbol-text">{{ row.symbol }}</span>
+              @if (trailingStopTriggered(row.lotId)) {
+                <button
+                  type="button"
+                  class="stop-hit-badge"
+                  [class.stop-hit-badge--up]="trailingStopHitUp(row.lotId)"
+                  [title]="stopHitTooltip(row.lotId)"
+                  (click)="dismissTrailingStop(row.lotId); $event.stopPropagation()"
+                >⚑ {{ stopBadgeLabel(row.lotId) }}</button>
+              }
+              @if (isCurrentHoldings()) {
+                @if (isEditingPlatform(row.lotId)) {
+                  <select
+                    class="platform-select"
+                    (click)="$event.stopPropagation()"
+                    (change)="setPlatform(row, $any($event.target).value)"
+                  >
+                    <option value="" [selected]="!row.platform">—</option>
+                    @for (p of platforms; track p.id) {
+                      <option [value]="p.id" [selected]="row.platform === p.id">{{ p.label }}</option>
+                    }
+                  </select>
+                } @else if (platformFor(row.platform); as p) {
+                  <button
+                    type="button"
+                    class="platform-badge"
+                    [style.--platform-color]="p.color"
+                    [title]="'Held at ' + p.label + ' — click to change'"
+                    (click)="startEditPlatform(row.lotId); $event.stopPropagation()"
+                  >{{ p.short }}</button>
+                } @else {
+                  <button
+                    type="button"
+                    class="platform-badge platform-badge--unset"
+                    title="Assign a platform"
+                    (click)="startEditPlatform(row.lotId); $event.stopPropagation()"
+                  >+ Platform</button>
+                }
+              }
             </td>
             <td class="etf-col">
               @if (isEtf(row.symbol)) {
@@ -249,8 +300,8 @@
                           class="range-btn trailing-stop-btn"
                           [class.active]="trailingStops().has(row.lotId)"
                           (click)="toggleTrailingStop(row.lotId)"
-                          [title]="trailingStops().has(row.lotId) ? ('Trailing stop ' + (trailingStopPct(row.lotId) | number:'1.0-2') + '% · $' + (trailingStopLevel(row.lotId) | number:'1.2-2') + ' · expires ' + (trailingStopExpiry(row.lotId) | date:'MMM d, y') + ' — click to remove') : 'Set a trailing stop percentage below the peak, with a cross alert while polling'"
-                        >Trailing Stop</button>
+                          [title]="trailingStops().has(row.lotId) ? ((trailingStopMode(row.lotId) === 'limit' ? ('Limit $' + (trailingStopLevel(row.lotId) | number:'1.2-2')) : ('Trailing stop ' + (trailingStopPct(row.lotId) | number:'1.0-2') + '% · $' + (trailingStopLevel(row.lotId) | number:'1.2-2'))) + ' · expires ' + (trailingStopExpiry(row.lotId) | date:'MMM d, y') + ' — click to remove') : 'Set a trailing stop percentage below the peak, or a fixed limit price, with a cross alert while polling'"
+                        >{{ trailingStopMode(row.lotId) === 'limit' ? 'Limit' : 'Trailing Stop' }}</button>
                       }
                       @if (row.range === '5D' || row.range === '1D') {
                         <button
@@ -456,6 +507,7 @@
                       [costBasis]="row.costBasis"
                       [showTrailingStop]="trailingStops().has(row.lotId)"
                       [trailingStop]="trailingStopLevel(row.lotId)"
+                      [trailingStopLabel]="trailingStopLabel(row.lotId)"
                       [showSessionShade]="row.range === '1D'"
                       [sessionShadeUntil]="row.sessionShadeUntil"
                       [peerData]="row.peerData"
@@ -564,19 +616,40 @@
   @if (trailingStopForm(); as ts) {
     <div class="ts-modal-backdrop" (click)="cancelTrailingStop()">
       <div class="ts-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="ts-modal-title">
-        <h3 id="ts-modal-title" class="ts-modal__title">Trailing stop · {{ ts.symbol }}</h3>
+        <h3 id="ts-modal-title" class="ts-modal__title">{{ tsMode() === 'limit' ? 'Limit' : 'Trailing stop' }} · {{ ts.symbol }}</h3>
         <p class="ts-modal__price">Current price {{'$'}}{{ ts.price | number:'1.2-2' }}</p>
-        <label class="ts-modal__field">
-          <span>Trailing %</span>
-          <input type="number" [(ngModel)]="tsPctInput" name="tsPct" min="0.1" max="99.9" step="0.1" placeholder="e.g. 3.5" />
-        </label>
+        <div class="ts-modal__toggle" role="group" aria-label="Alert type">
+          <button
+            type="button"
+            class="ts-toggle-btn"
+            [class.active]="tsMode() === 'trailing'"
+            (click)="tsMode.set('trailing')"
+          >Trailing stop</button>
+          <button
+            type="button"
+            class="ts-toggle-btn"
+            [class.active]="tsMode() === 'limit'"
+            (click)="tsMode.set('limit')"
+          >Limit value</button>
+        </div>
+        @if (tsMode() === 'limit') {
+          <label class="ts-modal__field">
+            <span>Limit price</span>
+            <input type="number" [(ngModel)]="tsLimitInput" name="tsLimit" min="0.01" step="0.01" placeholder="e.g. 152.50" />
+          </label>
+        } @else {
+          <label class="ts-modal__field">
+            <span>Trailing %</span>
+            <input type="number" [(ngModel)]="tsPctInput" name="tsPct" min="0.1" max="99.9" step="0.1" placeholder="e.g. 3.5" />
+          </label>
+        }
         <label class="ts-modal__field">
           <span>Expiry date</span>
           <input type="date" [(ngModel)]="tsExpiryInput" name="tsExpiry" [min]="minExpiryDate()" />
         </label>
         <div class="ts-modal__actions">
           <button type="button" class="watchlist-btn io-btn" (click)="cancelTrailingStop()">Cancel</button>
-          <button type="button" class="watchlist-btn add-btn" (click)="confirmTrailingStop()">Set stop</button>
+          <button type="button" class="watchlist-btn add-btn" (click)="confirmTrailingStop()">{{ tsMode() === 'limit' ? 'Set limit' : 'Set stop' }}</button>
         </div>
       </div>
     </div>

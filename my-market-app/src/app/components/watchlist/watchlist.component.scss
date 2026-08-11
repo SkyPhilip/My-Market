@@ -262,6 +262,85 @@ h2 {
 .clickable-row.earnings-d1 { background: rgba(240, 192, 64, 0.24); }
 .clickable-row.earnings-d0 { background: rgba(240, 192, 64, 0.34); }
 .clickable-row.earnings-near:hover { background: rgba(240, 192, 64, 0.42); }
+/* Fired stop/limit: red tint (downside stop) or green tint (upside target), with a one-time flash. */
+.clickable-row.stop-hit-row {
+  box-shadow: inset 3px 0 0 rgba(220, 53, 69, 0.95);
+  background: rgba(220, 53, 69, 0.1);
+  animation: stop-hit-flash 1.2s ease-out 1;
+}
+.clickable-row.stop-hit-row:hover { background: rgba(220, 53, 69, 0.18); }
+.clickable-row.stop-hit-row--up {
+  box-shadow: inset 3px 0 0 rgba(40, 167, 69, 0.95);
+  background: rgba(40, 167, 69, 0.1);
+}
+.clickable-row.stop-hit-row--up:hover { background: rgba(40, 167, 69, 0.18); }
+@keyframes stop-hit-flash {
+  0% { background: rgba(220, 53, 69, 0.55); }
+  100% {}
+}
+.stop-hit-badge {
+  margin-left: 6px;
+  border: 1px solid #dc3545;
+  border-radius: 5px;
+  color: #ff6b7a;
+  background: rgba(220, 53, 69, 0.15);
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.stop-hit-badge:hover { background: rgba(220, 53, 69, 0.28); }
+.stop-hit-badge--up {
+  border-color: #28a745;
+  color: #5cd67e;
+  background: rgba(40, 167, 69, 0.15);
+}
+.stop-hit-badge--up:hover { background: rgba(40, 167, 69, 0.28); }
+/* Brokerage platform chip (color per platform via --platform-color). */
+.platform-badge {
+  margin-left: 6px;
+  border: 1px solid var(--platform-color, #8892b0);
+  border-radius: 5px;
+  color: var(--platform-color, #8892b0);
+  background: color-mix(in srgb, var(--platform-color, #8892b0) 15%, transparent);
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.platform-badge:hover {
+  background: color-mix(in srgb, var(--platform-color, #8892b0) 28%, transparent);
+}
+.platform-badge--unset {
+  border-style: dashed;
+  border-color: #3a4d75;
+  color: #6b7a9c;
+  background: transparent;
+  font-weight: 600;
+}
+.platform-badge--unset:hover {
+  border-color: #4a9eff;
+  color: #4a9eff;
+  background: rgba(74, 158, 255, 0.08);
+}
+.platform-select {
+  margin-left: 6px;
+  background: #0f1a30;
+  color: #e0e0e0;
+  border: 1px solid #4a9eff;
+  border-radius: 5px;
+  padding: 2px 4px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  vertical-align: middle;
+}
 .chart-row td {
   padding: 0 16px 12px !important;
   border-bottom: 1px solid #2a3a5e;
@@ -502,6 +581,34 @@ h2 {
   margin: 0 0 16px;
   color: #8892b0;
   font-size: 13px;
+}
+.ts-modal__toggle {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 3px;
+  background: #0f1a30;
+  border: 1px solid #2a3a5e;
+  border-radius: 8px;
+}
+.ts-toggle-btn {
+  flex: 1;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #8892b0;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.ts-toggle-btn:hover {
+  color: #e0e0e0;
+}
+.ts-toggle-btn.active {
+  background: #4a9eff;
+  color: #fff;
 }
 .ts-modal__field {
   display: flex;
