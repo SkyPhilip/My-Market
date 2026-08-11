@@ -3,6 +3,7 @@ import { RouterOutlet } from '@angular/router';
 import { HeaderComponent } from './components/header/header.component';
 import { NotificationComponent } from './components/notification/notification.component';
 import { AuthService } from './services/auth.service';
+import { StopMonitorService } from './services/stop-monitor.service';
 
 @Component({
   selector: 'app-root',
@@ -25,4 +26,6 @@ import { AuthService } from './services/auth.service';
 })
 export class App {
   protected authService = inject(AuthService);
+  // Instantiate the always-on stop/limit monitor for the app's lifetime.
+  private readonly stopMonitor = inject(StopMonitorService);
 }

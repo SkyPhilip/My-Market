@@ -1,6 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AlpacaService } from '../../services/alpaca.service';
+import { AppSettingsService } from '../../services/app-settings.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaAccount, AlpacaErrorBody } from '../../models/alpaca.models';
 import { firstValueFrom } from 'rxjs';
@@ -14,6 +15,8 @@ import { firstValueFrom } from 'rxjs';
 })
 export class SettingsComponent implements OnInit {
   private alpacaService = inject(AlpacaService);
+  readonly appSettings = inject(AppSettingsService);
+  readonly settingBounds = AppSettingsService.BOUNDS;
 
   fetchAccount = fetchFnWithState<AlpacaAccount, AlpacaErrorBody>(() => this.alpacaService.getAccount());
 
@@ -44,6 +47,18 @@ export class SettingsComponent implements OnInit {
   ngOnInit(): void {
     this.fetchAccount();
     this.loadHolidays();
+  }
+
+  onPollSecondsChange(event: Event): void {
+    this.appSettings.setPollSeconds(Number((event.target as HTMLInputElement).value));
+  }
+
+  onWarnPctChange(event: Event): void {
+    this.appSettings.setWarnPct(Number((event.target as HTMLInputElement).value));
+  }
+
+  resetAppSettings(): void {
+    this.appSettings.reset();
   }
 
   private async loadHolidays(): Promise<void> {

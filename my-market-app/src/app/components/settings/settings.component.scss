@@ -38,6 +38,60 @@
     .value.active {
       color: #28a745;
     }
+    .setting-item--editable {
+      align-items: center;
+    }
+    .setting-text {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-right: 16px;
+    }
+    .hint {
+      color: #6b7a9c;
+      font-size: 12px;
+    }
+    .setting-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .setting-control input {
+      width: 84px;
+      background: #0f1a30;
+      border: 1px solid #2a3a5e;
+      border-radius: 6px;
+      color: #e0e0e0;
+      padding: 8px 10px;
+      font-size: 15px;
+      font-family: inherit;
+      text-align: right;
+      outline: none;
+    }
+    .setting-control input:focus {
+      border-color: #4a9eff;
+    }
+    .setting-control .unit {
+      color: #8892b0;
+      font-size: 14px;
+      min-width: 28px;
+    }
+    .retry-btn {
+      background: #4a9eff;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .retry-btn:hover {
+      background: #3a8eef;
+    }
     .loading {
       color: #8892b0;
     }

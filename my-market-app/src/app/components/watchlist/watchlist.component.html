@@ -107,6 +107,8 @@
           <tr class="clickable-row" [class.expanded]="isExpanded(row.lotId)" [ngClass]="earningsRowClass(row)"
             [class.stop-hit-row]="trailingStopTriggered(row.lotId)"
             [class.stop-hit-row--up]="trailingStopHitUp(row.lotId)"
+            [class.stop-near-row]="stopApproaching(row) !== null"
+            [class.stop-near-row--up]="stopApproaching(row) === 'up'"
             [title]="daysUntilEarnings(row) !== null && daysUntilEarnings(row)! <= 3 ? (row.symbol + ' reports earnings in ' + daysUntilEarnings(row) + ' day(s)') : ''"
             (click)="toggleChart(row)">
             <td class="symbol">

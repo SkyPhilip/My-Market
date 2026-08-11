@@ -54,6 +54,55 @@
         <p class="loading">Failed to load account information. <button class="retry-btn" (click)="fetchAccount()">Retry</button></p>
       }
 
+      <h2 class="section-title">Application Settings</h2>
+      <div class="settings-grid">
+        <div class="settings-column">
+          <div class="setting-item setting-item--editable">
+            <div class="setting-text">
+              <span class="label">Price poll frequency</span>
+              <span class="hint">How often stops/limits are checked while the market is open.</span>
+            </div>
+            <div class="setting-control">
+              <input
+                type="number"
+                [min]="settingBounds.pollSeconds.min"
+                [max]="settingBounds.pollSeconds.max"
+                step="5"
+                [value]="appSettings.pollSeconds()"
+                (change)="onPollSecondsChange($event)"
+              />
+              <span class="unit">sec</span>
+            </div>
+          </div>
+          <div class="setting-item setting-item--editable">
+            <div class="setting-text">
+              <span class="label">Approaching-alert threshold</span>
+              <span class="hint">Warn/flash when price is within this % of a stop or limit.</span>
+            </div>
+            <div class="setting-control">
+              <input
+                type="number"
+                [min]="settingBounds.warnPct.min"
+                [max]="settingBounds.warnPct.max"
+                step="0.1"
+                [value]="appSettings.warnPct()"
+                (change)="onWarnPctChange($event)"
+              />
+              <span class="unit">%</span>
+            </div>
+          </div>
+        </div>
+        <div class="settings-column">
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="label">Restore defaults</span>
+              <span class="hint">Reset poll frequency ({{ settingBounds.pollSeconds.min }}–{{ settingBounds.pollSeconds.max }}s) and alert threshold ({{ settingBounds.warnPct.min }}–{{ settingBounds.warnPct.max }}%).</span>
+            </div>
+            <button class="retry-btn" (click)="resetAppSettings()">Reset</button>
+          </div>
+        </div>
+      </div>
+
       <h2 class="section-title">Market Holidays ({{ holidayYear() }})</h2>
       @if (holidaysLoading()) {
         <p class="loading">Loading market holidays...</p>

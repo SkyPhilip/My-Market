@@ -278,6 +278,23 @@ h2 {
   0% { background: rgba(220, 53, 69, 0.55); }
   100% {}
 }
+/* Approaching (not yet hit) stop/limit: continuous pulse — amber for a downside stop, green for an upside target. */
+.clickable-row.stop-near-row {
+  box-shadow: inset 3px 0 0 rgba(240, 160, 32, 0.95);
+  animation: stop-near-pulse 1.4s ease-in-out infinite;
+}
+.clickable-row.stop-near-row--up {
+  box-shadow: inset 3px 0 0 rgba(40, 167, 69, 0.95);
+  animation-name: stop-near-pulse-up;
+}
+@keyframes stop-near-pulse {
+  0%, 100% { background: rgba(240, 160, 32, 0.06); }
+  50% { background: rgba(240, 160, 32, 0.32); }
+}
+@keyframes stop-near-pulse-up {
+  0%, 100% { background: rgba(40, 167, 69, 0.06); }
+  50% { background: rgba(40, 167, 69, 0.30); }
+}
 .stop-hit-badge {
   margin-left: 6px;
   border: 1px solid #dc3545;
