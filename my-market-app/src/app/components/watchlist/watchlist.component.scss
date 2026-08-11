@@ -299,35 +299,13 @@ h2 {
   background: rgba(40, 167, 69, 0.15);
 }
 .stop-hit-badge--up:hover { background: rgba(40, 167, 69, 0.28); }
-/* Brokerage platform chip (color per platform via --platform-color). */
-.platform-badge {
-  margin-left: 6px;
-  border: 1px solid var(--platform-color, #8892b0);
-  border-radius: 5px;
-  color: var(--platform-color, #8892b0);
-  background: color-mix(in srgb, var(--platform-color, #8892b0) 15%, transparent);
-  padding: 1px 6px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
+/* Symbol doubles as the platform trigger in Current Holdings; text color reflects the platform. */
+.symbol-text--platform {
   cursor: pointer;
-  vertical-align: middle;
-  white-space: nowrap;
 }
-.platform-badge:hover {
-  background: color-mix(in srgb, var(--platform-color, #8892b0) 28%, transparent);
-}
-.platform-badge--unset {
-  border-style: dashed;
-  border-color: #3a4d75;
-  color: #6b7a9c;
-  background: transparent;
-  font-weight: 600;
-}
-.platform-badge--unset:hover {
-  border-color: #4a9eff;
-  color: #4a9eff;
-  background: rgba(74, 158, 255, 0.08);
+.symbol-text--platform:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .platform-select {
   margin-left: 6px;

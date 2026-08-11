@@ -110,16 +110,6 @@
             [title]="daysUntilEarnings(row) !== null && daysUntilEarnings(row)! <= 3 ? (row.symbol + ' reports earnings in ' + daysUntilEarnings(row) + ' day(s)') : ''"
             (click)="toggleChart(row)">
             <td class="symbol">
-              <span class="symbol-text">{{ row.symbol }}</span>
-              @if (trailingStopTriggered(row.lotId)) {
-                <button
-                  type="button"
-                  class="stop-hit-badge"
-                  [class.stop-hit-badge--up]="trailingStopHitUp(row.lotId)"
-                  [title]="stopHitTooltip(row.lotId)"
-                  (click)="dismissTrailingStop(row.lotId); $event.stopPropagation()"
-                >⚑ {{ stopBadgeLabel(row.lotId) }}</button>
-              }
               @if (isCurrentHoldings()) {
                 @if (isEditingPlatform(row.lotId)) {
                   <select
@@ -132,22 +122,26 @@
                       <option [value]="p.id" [selected]="row.platform === p.id">{{ p.label }}</option>
                     }
                   </select>
-                } @else if (platformFor(row.platform); as p) {
-                  <button
-                    type="button"
-                    class="platform-badge"
-                    [style.--platform-color]="p.color"
-                    [title]="'Held at ' + p.label + ' — click to change'"
-                    (click)="startEditPlatform(row.lotId); $event.stopPropagation()"
-                  >{{ p.short }}</button>
                 } @else {
-                  <button
-                    type="button"
-                    class="platform-badge platform-badge--unset"
-                    title="Assign a platform"
+                  <span
+                    class="symbol-text symbol-text--platform"
+                    role="button"
+                    [style.color]="symbolColor(row)"
+                    [title]="platformFor(row.platform) ? ('Held at ' + platformFor(row.platform)!.label + ' — click to change') : 'Set platform'"
                     (click)="startEditPlatform(row.lotId); $event.stopPropagation()"
-                  >+ Platform</button>
+                  >{{ row.symbol }}</span>
                 }
+              } @else {
+                <span class="symbol-text">{{ row.symbol }}</span>
+              }
+              @if (trailingStopTriggered(row.lotId)) {
+                <button
+                  type="button"
+                  class="stop-hit-badge"
+                  [class.stop-hit-badge--up]="trailingStopHitUp(row.lotId)"
+                  [title]="stopHitTooltip(row.lotId)"
+                  (click)="dismissTrailingStop(row.lotId); $event.stopPropagation()"
+                >⚑ {{ stopBadgeLabel(row.lotId) }}</button>
               }
             </td>
             <td class="etf-col">

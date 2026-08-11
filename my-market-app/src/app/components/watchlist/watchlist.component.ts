@@ -232,15 +232,14 @@ type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: num
 interface PlatformOption {
   id: string;
   label: string;
-  short: string;
   color: string;
 }
 
-/** Brokerage platforms a holding can live on. Add entries here to offer more. */
+/** Brokerage platforms a holding can live on; `color` tints the symbol text. Add entries here to offer more. */
 const PLATFORMS: PlatformOption[] = [
-  { id: 'schwab', label: 'Schwab', short: 'SCHW', color: '#00a0df' },
-  { id: 'jpmorgan', label: 'JP Morgan', short: 'JPM', color: '#b58a3e' },
-  { id: 'other', label: 'Other', short: 'OTHER', color: '#8892b0' },
+  { id: 'schwab', label: 'Schwab', color: '#4a9eff' },
+  { id: 'jpmorgan', label: 'JP Morgan', color: '#e3b341' },
+  { id: 'other', label: 'Other', color: '#e0e0e0' },
 ];
 
 @Component({
@@ -363,6 +362,12 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     if (!col) return rows;
 
     return [...rows].sort((a, b) => {
+      // Current Holdings: Symbol column groups by platform first, then alphabetical.
+      if (col === 'symbol' && this.isCurrentHoldings()) {
+        const pk = this.platformSortKey(a) - this.platformSortKey(b);
+        const cmp = pk !== 0 ? pk : a.symbol.localeCompare(b.symbol);
+        return dir === 'asc' ? cmp : -cmp;
+      }
       const portfolioCost = col === 'weightPercent' ? this.portfolioTotalCost() : 0;
       const weight = (r: WatchlistRow): number | null =>
         r.totalCost !== null && portfolioCost > 0 ? r.totalCost / portfolioCost : null;
@@ -482,6 +487,17 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   /** Platform metadata for a lot's stored id (null when unset or unknown). */
   platformFor(id: string | null): PlatformOption | null {
     return id ? this.platforms.find(p => p.id === id) ?? null : null;
+  }
+
+  /** Symbol text color for a holding's platform (null → default styling). */
+  symbolColor(row: WatchlistRow): string | null {
+    return this.platformFor(row.platform)?.color ?? null;
+  }
+
+  /** Platform ordering key for the Symbol sort (unset lots sort last). */
+  private platformSortKey(row: WatchlistRow): number {
+    const idx = this.platforms.findIndex(p => p.id === row.platform);
+    return idx === -1 ? this.platforms.length : idx;
   }
 
   /** Lots whose platform is currently being edited (inline dropdown shown). */
