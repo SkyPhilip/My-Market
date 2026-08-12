@@ -1421,6 +1421,48 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     return this.stopMonitor.approachingDirection(cfg, row.price);
   }
 
+  /**
+   * Remaining room before a lot's stop/limit fires: the gap as a % of price, plus that gap as a
+   * share of the original distance (so the gauge empties as price closes in). Null when not applicable.
+   */
+  private stopGap(row: WatchlistRow): { pct: number; fraction: number; up: boolean } | null {
+    const cfg = this.trailingStops().get(row.lotId);
+    if (!cfg || cfg.status === 'triggered' || row.price === null || row.price <= 0 || cfg.stop <= 0) return null;
+    const up = cfg.mode === 'limit' && cfg.above;
+    const gap = up ? cfg.stop - row.price : row.price - cfg.stop;
+    if (gap < 0) return null;
+    const pct = (gap / row.price) * 100;
+    // Trailing stops sit a fixed % below the peak; limits keep their distance from the price when set.
+    const maxPct = cfg.mode === 'trailing'
+      ? cfg.pct
+      : (cfg.peak > 0 ? (Math.abs(cfg.stop - cfg.peak) / cfg.peak) * 100 : pct);
+    const fraction = maxPct > 0 ? Math.min(1, Math.max(0, pct / maxPct)) : 0;
+    return { pct, fraction, up };
+  }
+
+  /** Gap to the stop/limit as a percent of price (null when no active alert). */
+  stopGapPct(row: WatchlistRow): number | null {
+    return this.stopGap(row)?.pct ?? null;
+  }
+
+  /** Gap as a 0–1 share of the original distance, driving the gauge fill height. */
+  stopGapFraction(row: WatchlistRow): number | null {
+    return this.stopGap(row)?.fraction ?? null;
+  }
+
+  /** True when the level is an upside limit target rather than a downside stop. */
+  stopGapUp(row: WatchlistRow): boolean {
+    return this.stopGap(row)?.up ?? false;
+  }
+
+  /** Gauge tint: danger once inside the warn band or the last fifth of the range, warn past the halfway mark. */
+  stopGapSeverity(row: WatchlistRow): 'safe' | 'warn' | 'danger' | null {
+    const gap = this.stopGap(row);
+    if (!gap) return null;
+    if (this.stopApproaching(row) !== null || gap.fraction <= 0.2) return 'danger';
+    return gap.fraction <= 0.5 ? 'warn' : 'safe';
+  }
+
   /** Tooltip describing how and when a lot's alert fired. */
   stopHitTooltip(lotId: string): string {
     const cfg = this.trailingStops().get(lotId);

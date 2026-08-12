@@ -1,6 +1,20 @@
-<div #chartWrapper class="chart-wrapper" [class.fill]="fillHeight">
+<div #chartWrapper class="chart-wrapper" [class.fill]="fillHeight" [class.has-stop-gauge]="stopGapPct !== null">
   <div #crosshairLabel class="crosshair-label"></div>
   <div #maTooltip class="ma-tooltip"></div>
   <div #chartContainer class="chart-container"></div>
+  @if (stopGapPct !== null) {
+    <div
+      class="stop-gauge"
+      [class.stop-gauge--warn]="stopGapSeverity === 'warn'"
+      [class.stop-gauge--danger]="stopGapSeverity === 'danger'"
+      [title]="'Room left before the ' + (stopGapUp ? 'limit target' : 'trailing stop') + ' at $' + (trailingStop | number:'1.2-2') + ' — ' + (stopGapPct | number:'1.1-2') + '% away'"
+    >
+      <span class="stop-gauge__value">{{ stopGapPct | number:'1.1-2' }}%</span>
+      <div class="stop-gauge__track">
+        <div class="stop-gauge__fill" [style.height.%]="(stopGapFraction ?? 0) * 100"></div>
+      </div>
+      <span class="stop-gauge__caption">{{ stopGapUp ? 'to target' : 'to stop' }}</span>
+    </div>
+  }
   <div #volumeProfile class="volume-profile"></div>
 </div>

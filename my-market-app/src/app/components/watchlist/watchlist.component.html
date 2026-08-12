@@ -144,6 +144,13 @@
                   [title]="stopHitTooltip(row.lotId)"
                   (click)="dismissTrailingStop(row.lotId); $event.stopPropagation()"
                 >⚑ {{ stopBadgeLabel(row.lotId) }}</button>
+              } @else if (stopGapPct(row); as gap) {
+                <span
+                  class="stop-gap-pill"
+                  [class.stop-gap-pill--warn]="stopGapSeverity(row) === 'warn'"
+                  [class.stop-gap-pill--danger]="stopGapSeverity(row) === 'danger'"
+                  [title]="(gap | number:'1.1-2') + '% before the ' + (stopGapUp(row) ? 'limit target' : 'trailing stop') + ' at $' + (trailingStopLevel(row.lotId) | number:'1.2-2')"
+                >{{ stopGapUp(row) ? '▲' : '▼' }} {{ gap | number:'1.1-2' }}%</span>
               }
             </td>
             <td class="etf-col">
@@ -504,6 +511,10 @@
                       [showTrailingStop]="trailingStops().has(row.lotId)"
                       [trailingStop]="trailingStopLevel(row.lotId)"
                       [trailingStopLabel]="trailingStopLabel(row.lotId)"
+                      [stopGapPct]="stopGapPct(row)"
+                      [stopGapFraction]="stopGapFraction(row)"
+                      [stopGapSeverity]="stopGapSeverity(row)"
+                      [stopGapUp]="stopGapUp(row)"
                       [showSessionShade]="row.range === '1D'"
                       [sessionShadeUntil]="row.sessionShadeUntil"
                       [peerData]="row.peerData"

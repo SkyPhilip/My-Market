@@ -316,6 +316,24 @@ h2 {
   background: rgba(40, 167, 69, 0.15);
 }
 .stop-hit-badge--up:hover { background: rgba(40, 167, 69, 0.28); }
+/* Live gap to a pending stop/limit; tightens from green to red as the room shrinks. */
+.stop-gap-pill {
+  --gap-color: #28a745;
+  margin-left: 6px;
+  border: 1px solid var(--gap-color);
+  border-radius: 5px;
+  color: var(--gap-color);
+  background: color-mix(in srgb, var(--gap-color) 12%, transparent);
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  white-space: nowrap;
+  cursor: help;
+}
+.stop-gap-pill--warn { --gap-color: #f0a020; }
+.stop-gap-pill--danger { --gap-color: #dc3545; }
 /* Symbol doubles as the platform trigger in Current Holdings; text color reflects the platform. */
 .symbol-text--platform {
   cursor: pointer;

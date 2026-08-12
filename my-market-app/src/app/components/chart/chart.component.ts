@@ -1,4 +1,5 @@
 import { Component, ElementRef, Input, OnChanges, OnDestroy, SimpleChanges, ViewChild, AfterViewInit } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
 import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries, HistogramSeries, HistogramData, CandlestickSeries, CandlestickData, MouseEventParams, createSeriesMarkers, ISeriesMarkersPluginApi, SeriesMarker, LineStyle } from 'lightweight-charts';
 
 export type DivergenceType = 'regBull' | 'hidBull' | 'regBear' | 'hidBear';
@@ -75,6 +76,7 @@ interface VolumeProfileBin {
 @Component({
   selector: 'app-chart',
   standalone: true,
+  imports: [DecimalPipe],
   templateUrl: './chart.component.html',
   styleUrl: './chart.component.scss',
 })
@@ -107,6 +109,14 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() showTrailingStop = false;
   @Input() trailingStop: number | null = null;
   @Input() trailingStopLabel = 'Trailing Stop';
+  /** Remaining distance to the stop/limit, as a percent of the current price. */
+  @Input() stopGapPct: number | null = null;
+  /** Remaining distance as a 0–1 share of the original distance (drives the gauge fill). */
+  @Input() stopGapFraction: number | null = null;
+  /** Severity tint for the gauge: shrinking room moves safe → warn → danger. */
+  @Input() stopGapSeverity: 'safe' | 'warn' | 'danger' | null = null;
+  /** True when the level sits above price (an upside limit target) rather than below it. */
+  @Input() stopGapUp = false;
   @Input() peerData: LineData<Time>[] = [];
   @Input() showPeer = false;
   @Input() showSessionShade = false;
