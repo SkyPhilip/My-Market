@@ -21,6 +21,8 @@ export interface PickCriteria {
   revenueGrowth: boolean;     // positive YoY revenue growth
   currentRatioOk: boolean;    // current ratio > 1
   strongRoe: boolean;         // ROE > 15%
+  cheapEvFcf: boolean;        // EV/FCF < 15 years
+  cheapPegy: boolean;         // PEGY < 1
 }
 
 export interface StockPick {
@@ -51,6 +53,9 @@ const STAGE2_CAP = 10;
 /** Trading-day history needed for a 200-day SMA plus a small buffer. */
 const HISTORY_DAYS = 400;
 const VOLUME_SURGE_MULTIPLE = 1.5;
+/** Payback bands: cash-flow cheapness is weighted above PEGY, which relies on trailing EPS growth. */
+const CHEAP_EV_FCF = 15;
+const CHEAP_PEGY = 1;
 /** Tickers on this list are already owned and are never recommended. */
 const HOLDINGS_LIST = 'Current Holdings';
 
@@ -194,6 +199,10 @@ export class StockPickerService {
     const revenueGrowth = (m?.revenueGrowthYoY ?? 0) > 0;
     const currentRatioOk = (m?.currentRatio ?? 0) > 1;
     const strongRoe = (m?.roeTTM ?? 0) > 15;
+    const evFcf = m?.evFcfTTM ?? null;
+    const cheapEvFcf = evFcf !== null && evFcf > 0 && evFcf < CHEAP_EV_FCF;
+    const pegy = this.#pegy(m);
+    const cheapPegy = pegy !== null && pegy < CHEAP_PEGY;
 
     const surp = surprises ?? [];
     const greenSurprises = surp.filter(s => (s.surprisePercent ?? 0) > 0).length;
@@ -212,6 +221,8 @@ export class StockPickerService {
       revenueGrowth,
       currentRatioOk,
       strongRoe,
+      cheapEvFcf,
+      cheapPegy,
     };
 
     // Weighted score (no tuning yet — sensible defaults for the trial run).
@@ -227,6 +238,8 @@ export class StockPickerService {
     score += revenueGrowth ? 1 : 0;
     score += currentRatioOk ? 1 : 0;
     score += strongRoe ? 1 : 0;
+    score += cheapEvFcf ? 2 : 0;
+    score += cheapPegy ? 1 : 0;
 
     return {
       symbol: c.symbol,
@@ -239,6 +252,15 @@ export class StockPickerService {
       metrics,
       surprises,
     };
+  }
+
+  /** PEGY = P/E ÷ (growth % + dividend yield %); growth implied from PEG, else 5-year EPS growth. */
+  #pegy(m: FinnhubMetrics | null): number | null {
+    if (!m || m.peTTM === null || m.peTTM <= 0) return null;
+    const growth = m.pegTTM !== null && m.pegTTM > 0 ? m.peTTM / m.pegTTM : m.epsGrowth5Y;
+    if (growth === null) return null;
+    const denominator = growth + (m.dividendYield ?? 0);
+    return denominator > 0 ? +(m.peTTM / denominator).toFixed(3) : null;
   }
 
   /** True when the (non-null) values are strictly non-decreasing with a net rise. */

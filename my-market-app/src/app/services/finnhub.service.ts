@@ -204,6 +204,7 @@ export class FinnhubService {
       week52High: this.#num(m['52WeekHigh']),
       week52Low: this.#num(m['52WeekLow']),
       peTTM: this.#num(m['peTTM']),
+      pegTTM: this.#num(m['pegTTM']),
       psTTM: this.#num(m['psTTM']),
       pbAnnual: this.#num(m['pbAnnual']),
       roeTTM: this.#num(m['roeTTM']),
@@ -213,6 +214,11 @@ export class FinnhubService {
       epsGrowth5Y: this.#num(m['epsGrowth5Y']),
       revenueGrowthYoY: this.#num(m['revenueGrowthTTMYoy']),
       dividendYield: this.#num(m['dividendYieldIndicatedAnnual']),
+      marketCap: this.#num(m['marketCapitalization']),
+      enterpriseValue: this.#num(m['enterpriseValue']),
+      evFcfTTM: this.#num(m['currentEv/freeCashFlowTTM']),
+      evFcfAnnual: this.#num(m['currentEv/freeCashFlowAnnual']),
+      evEbitdaTTM: this.#num(m['evEbitdaTTM']),
     };
   }
 

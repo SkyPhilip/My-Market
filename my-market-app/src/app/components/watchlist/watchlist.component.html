@@ -86,7 +86,7 @@
             <th class="sortable" (click)="sortBy('pegy')">PEGY <span class="sort-icon">{{ sortIcon('pegy') }}</span></th>
           }
           @if (!isCurrentHoldings()) {
-            <th class="value-col" [title]="cashValueTooltip">Value</th>
+            <th class="value-col" [title]="cashValueTooltip">EV/FCF</th>
           }
           <th class="sortable" (click)="sortBy('dividendYield')">Div Yield <span class="sort-icon">{{ sortIcon('dividendYield') }}</span></th>
           @if (hasCostBasis()) {
@@ -179,7 +179,7 @@
               @if (row.pegyLoading) {
                 <span class="pegy-pending">…</span>
               } @else if (row.pegyLoaded) {
-                <button type="button" class="pegy-btn computed" [title]="pegyTooltip" (click)="loadPegy(row.symbol); $event.stopPropagation()">{{ row.pegy !== null ? (row.pegy | number:'1.3-3') : 'N/A' }}</button>
+                <button type="button" class="pegy-btn computed" [class.undervalued]="row.pegy !== null && row.pegy < 1" [class.expensive]="row.pegy !== null && row.pegy > 2" [title]="pegyTitle(row)" (click)="loadPegy(row.symbol); $event.stopPropagation()">{{ row.pegy !== null ? (row.pegy | number:'1.3-3') : 'N/A' }}</button>
               } @else {
                 <button type="button" class="pegy-btn" [title]="pegyTooltip" (click)="loadPegy(row.symbol); $event.stopPropagation()">PEGY</button>
               }
@@ -190,9 +190,9 @@
               @if (row.cashValueLoading) {
                 <span class="pegy-pending">…</span>
               } @else if (row.cashValueLoaded) {
-                <button type="button" class="value-btn computed" [class.undervalued]="row.cashValue !== null && row.cashValue < 0" [title]="cashValueTitle(row)" (click)="loadCashValue(row.symbol); $event.stopPropagation()">{{ formatCompactMoney(row.cashValue) }}</button>
+                <button type="button" class="value-btn computed" [class.undervalued]="row.cashValue !== null && row.cashValue < 15" [class.expensive]="row.cashValue !== null && row.cashValue > 30" [title]="cashValueTitle(row)" (click)="loadCashValue(row.symbol); $event.stopPropagation()">{{ formatEvToOcf(row.cashValue) }}</button>
               } @else {
-                <button type="button" class="value-btn" [title]="cashValueTooltip" (click)="loadCashValue(row.symbol); $event.stopPropagation()">Value</button>
+                <button type="button" class="value-btn" [title]="cashValueTooltip" (click)="loadCashValue(row.symbol); $event.stopPropagation()">EV/FCF</button>
               }
             </td>
             }

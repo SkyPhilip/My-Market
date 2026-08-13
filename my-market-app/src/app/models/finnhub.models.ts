@@ -14,6 +14,7 @@ export interface FinnhubMetrics {
   week52High: number | null;
   week52Low: number | null;
   peTTM: number | null;
+  pegTTM: number | null;
   psTTM: number | null;
   pbAnnual: number | null;
   roeTTM: number | null;
@@ -23,6 +24,11 @@ export interface FinnhubMetrics {
   epsGrowth5Y: number | null;
   revenueGrowthYoY: number | null;
   dividendYield: number | null;
+  marketCap: number | null;        // millions
+  enterpriseValue: number | null;  // millions
+  evFcfTTM: number | null;         // years of free cash flow to pay back EV
+  evFcfAnnual: number | null;
+  evEbitdaTTM: number | null;
 }
 
 /** One month's analyst recommendation bucket counts (Finnhub /stock/recommendation). */

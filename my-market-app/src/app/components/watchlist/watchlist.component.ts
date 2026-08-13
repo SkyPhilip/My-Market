@@ -8,7 +8,6 @@ import { FinnhubService } from '../../services/finnhub.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaErrorBody, AlpacaBarsResponse, AlpacaSnapshotsResponse, AlpacaSnapshot } from '../../models/alpaca.models';
 import { FinnhubNewsArticle, FinnhubMetrics, FinnhubRecommendation, FinnhubEarningsDate, FinnhubEarningsSurprise } from '../../models/finnhub.models';
-import { FmpCashValue } from '../../models/fmp.models';
 import { ChartComponent, DivergenceType } from '../chart/chart.component';
 import { NotificationService } from '../../services/notification.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -202,7 +201,7 @@ interface WatchlistRow {
   cashValue: number | null;
   cashValueLoading: boolean;
   cashValueLoaded: boolean;
-  cashValueBreakdown: FmpCashValue | null;
+  cashValueBreakdown: FinnhubMetrics | null;
 }
 
 type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'dividendYield' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'weightPercent';
@@ -1014,17 +1013,17 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     return Math.max(0, Math.min(100, +(((row.price - m.week52Low) / span) * 100).toFixed(1)));
   }
 
-  readonly pegyTooltip = 'PEGY = (P/E) \u00f7 (EPS growth % + dividend yield %)\nLower is cheaper relative to growth + income.';
+  readonly pegyTooltip = 'PEGY = P/E ÷ (EPS growth % + dividend yield %)\n\nGrowth is implied from Finnhub PEG (P/E ÷ PEG), falling back to 5-year EPS growth.\nUnder 1 is the classic Lynch buy zone (green), 1–2 is fair, over 2 is expensive (red).';
 
   async loadPegy(symbol: string): Promise<void> {
     this.watchlistRows.update(rows => rows.map(r =>
       r.symbol === symbol ? { ...r, pegyLoading: true } : r
     ));
     try {
-      const pegyMap = await firstValueFrom(this.fmpService.getPegy([symbol]));
-      const pegy = pegyMap.get(symbol) ?? null;
+      const metrics = await firstValueFrom(this.finnhubService.getBasicFinancials(symbol));
+      const pegy = this.isEtf(symbol) ? null : this.#pegyFrom(metrics);
       this.watchlistRows.update(rows => rows.map(r =>
-        r.symbol === symbol ? { ...r, pegy, pegyLoaded: true, pegyLoading: false } : r
+        r.symbol === symbol ? { ...r, pegy, metrics: r.metrics ?? metrics, pegyLoaded: true, pegyLoading: false } : r
       ));
     } catch {
       this.watchlistRows.update(rows => rows.map(r =>
@@ -1033,18 +1032,49 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     }
   }
 
-  readonly cashValueTooltip = 'Value = market cap + total debt \u2212 cash on hand \u2212 latest annual operating cash flow.\nAll dollars. A NEGATIVE result may signal the price is cheap relative to cash + debt + operating cash generation.';
+  /** Growth rate behind PEGY: implied by Finnhub's PEG, else the 5-year EPS growth rate. */
+  #pegyGrowth(m: FinnhubMetrics): number | null {
+    if (m.pegTTM !== null && m.pegTTM > 0 && m.peTTM !== null) return m.peTTM / m.pegTTM;
+    return m.epsGrowth5Y;
+  }
 
-  /** Lazily fetches the cash-value metric (market cap \u2212 cash \u2212 operating cash flow) for a symbol. */
+  #pegyFrom(m: FinnhubMetrics | null): number | null {
+    if (!m || m.peTTM === null || m.peTTM <= 0) return null;
+    const growth = this.#pegyGrowth(m);
+    if (growth === null) return null;
+    const denominator = growth + (m.dividendYield ?? 0);
+    if (denominator <= 0) return null;
+    return +(m.peTTM / denominator).toFixed(3);
+  }
+
+  /** Multi-line tooltip showing the PEGY formula with this row's inputs. */
+  pegyTitle(row: WatchlistRow): string {
+    const m = row.metrics;
+    if (!m || row.pegy === null) return this.pegyTooltip;
+    const growth = this.#pegyGrowth(m);
+    const pct = (v: number | null) => v === null ? 'N/A' : `${v.toFixed(2)}%`;
+    return [
+      'PEGY = P/E ÷ (EPS growth % + dividend yield %)',
+      `     = ${m.peTTM?.toFixed(2) ?? 'N/A'} ÷ (${pct(growth)} + ${pct(m.dividendYield)})`,
+      `     = ${row.pegy.toFixed(3)}`,
+      '',
+      `PEG (TTM) = ${m.pegTTM?.toFixed(2) ?? 'N/A'}`,
+      'Under 1 is the classic Lynch buy zone; over 2 is expensive.',
+    ].join('\n');
+  }
+
+  readonly cashValueTooltip = 'EV/FCF — years of free cash flow needed to pay back the purchase price.\n\nEV = market cap + total debt − cash on hand\nEV/FCF = EV ÷ trailing-twelve-month free cash flow\n\nLower is cheaper: under 15y is attractive, over 30y is expensive.\nN/A when free cash flow is zero or negative.';
+
+  /** Lazily fetches the EV/FCF payback metric for a symbol (shares Finnhub's 12h metrics cache). */
   async loadCashValue(symbol: string): Promise<void> {
     this.watchlistRows.update(rows => rows.map(r =>
       r.symbol === symbol ? { ...r, cashValueLoading: true } : r
     ));
     try {
-      const result = await firstValueFrom(this.fmpService.getCashValue(symbol));
+      const result = await firstValueFrom(this.finnhubService.getBasicFinancials(symbol));
       this.watchlistRows.update(rows => rows.map(r =>
         r.symbol === symbol
-          ? { ...r, cashValue: result?.value ?? null, cashValueBreakdown: result ?? null, cashValueLoaded: true, cashValueLoading: false }
+          ? { ...r, cashValue: result?.evFcfTTM ?? null, cashValueBreakdown: result ?? null, cashValueLoaded: true, cashValueLoading: false }
           : r
       ));
     } catch {
@@ -1066,11 +1096,31 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     return `${sign}$${abs.toFixed(0)}`;
   }
 
-  /** Multi-line tooltip breaking down a row's cash-value inputs (falls back to the generic help text). */
+  /** EV/FCF rendered as a payback period, e.g. "7.2y". */
+  formatEvToOcf(v: number | null): string {
+    if (v === null || !Number.isFinite(v)) return 'N/A';
+    return `${v.toFixed(1)}y`;
+  }
+
+  /** Multi-line tooltip showing the formula and this row's inputs (falls back to the generic help text). */
   cashValueTitle(row: WatchlistRow): string {
     const b = row.cashValueBreakdown;
     if (!b) return this.cashValueTooltip;
-    return `Market cap: ${this.formatCompactMoney(b.marketCap)}\n+ Total debt: ${this.formatCompactMoney(b.totalDebt)}\n\u2212 Cash on hand: ${this.formatCompactMoney(b.cash)}\n\u2212 Operating cash flow: ${this.formatCompactMoney(b.operatingCashFlow)}\n= ${this.formatCompactMoney(b.value)}`;
+    // Finnhub reports market cap and enterprise value in millions.
+    const money = (millions: number | null) => this.formatCompactMoney(millions === null ? null : millions * 1e6);
+    const netDebt = b.enterpriseValue !== null && b.marketCap !== null ? b.enterpriseValue - b.marketCap : null;
+    return [
+      'EV = market cap + total debt − cash',
+      `   = ${money(b.marketCap)} + ${money(netDebt)} (net debt)`,
+      `   = ${money(b.enterpriseValue)}`,
+      '',
+      'EV/FCF = EV ÷ free cash flow (TTM)',
+      `       = ${this.formatEvToOcf(b.evFcfTTM)}`,
+      `EV/FCF (annual) = ${this.formatEvToOcf(b.evFcfAnnual)}`,
+      `EV/EBITDA = ${b.evEbitdaTTM !== null ? b.evEbitdaTTM.toFixed(1) : 'N/A'}`,
+      '',
+      'Lower EV/FCF is cheaper (<15y attractive, >30y expensive).',
+    ].join('\n');
   }
 
   toggleMacd(lotId: string): void {

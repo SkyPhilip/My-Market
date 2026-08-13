@@ -37,14 +37,16 @@ export interface FmpCashFlow {
   netCashProvidedByOperatingActivities?: number;
 }
 
-/** "Cash value" breakdown: enterprise value (market cap + total debt − cash) minus one year of
- *  operating cash flow. A negative `value` hints the price may be cheap relative to cash + debt +
- *  operating cash generation. */
+/** Enterprise-value breakdown: EV = market cap + total debt − cash. `value` is the dollar residual
+ *  after one year of operating cash flow; `evToOcf` is the same idea as a scale-independent ratio
+ *  (years of operating cash flow needed to pay back the purchase price). */
 export interface FmpCashValue {
   marketCap: number | null;
   totalDebt: number | null;
   cash: number | null;
   operatingCashFlow: number | null;
+  enterpriseValue: number | null;
+  evToOcf: number | null;
   value: number | null;
 }
 

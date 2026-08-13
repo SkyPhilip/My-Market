@@ -245,8 +245,10 @@ export class FmpService {
     );
   }
 
-  /** Enterprise value (market cap + total debt − cash) minus latest annual operating cash flow (all in dollars).
-   *  Negative → price may be cheap relative to cash + debt + operating cash generation. Cached per session. */
+  /** Enterprise value (market cap + total debt − cash) expressed as EV/OCF — years of latest annual
+   *  operating cash flow needed to pay back the purchase price. Lower = cheaper. Cached per session.
+   *  NOTE: the statement endpoints below are premium-only on the free tier (all symbols except AAPL
+   *  return "Premium Query Parameter"), so the watchlist column uses Finnhub's EV/FCF instead. */
   getCashValue(symbol: string): Observable<FmpCashValue | null> {
     const upper = symbol.trim().toUpperCase();
     if (!upper) return of(null);
@@ -272,10 +274,17 @@ export class FmpService {
           ? balance.totalDebt
           : (balance ? 0 : null);
         const operatingCashFlow = cashFlow?.operatingCashFlow ?? cashFlow?.netCashProvidedByOperatingActivities ?? null;
-        const value = marketCap !== null && totalDebt !== null && cash !== null && operatingCashFlow !== null
-          ? +(marketCap + totalDebt - cash - operatingCashFlow).toFixed(2)
+        const enterpriseValue = marketCap !== null && totalDebt !== null && cash !== null
+          ? +(marketCap + totalDebt - cash).toFixed(2)
           : null;
-        const result: FmpCashValue = { marketCap, totalDebt, cash, operatingCashFlow, value };
+        const value = enterpriseValue !== null && operatingCashFlow !== null
+          ? +(enterpriseValue - operatingCashFlow).toFixed(2)
+          : null;
+        // Negative or zero operating cash flow makes the payback ratio meaningless.
+        const evToOcf = enterpriseValue !== null && operatingCashFlow !== null && operatingCashFlow > 0
+          ? +(enterpriseValue / operatingCashFlow).toFixed(2)
+          : null;
+        const result: FmpCashValue = { marketCap, totalDebt, cash, operatingCashFlow, enterpriseValue, evToOcf, value };
         this.#cashValueCache.set(upper, result);
         return result;
       }),

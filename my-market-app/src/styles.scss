@@ -67,6 +67,20 @@ app-watchlist .pegy-btn.computed {
   color: #e0e0e0;
 }
 
+/* PEGY < 1 = classic Lynch buy zone → green. */
+app-watchlist .pegy-btn.computed.undervalued {
+  border-color: #28a745;
+  color: #28a745;
+  background: rgba(40, 167, 69, 0.12);
+}
+
+/* PEGY > 2 = paying up for the growth + income → red. */
+app-watchlist .pegy-btn.computed.expensive {
+  border-color: #dc3545;
+  color: #dc3545;
+  background: rgba(220, 53, 69, 0.12);
+}
+
 app-watchlist .pegy-pending {
   color: #8892b0;
 }
@@ -92,11 +106,18 @@ app-watchlist .value-btn.computed {
   color: #e0e0e0;
 }
 
-/* Negative cash value = potential undervaluation → green highlight. */
+/* Short payback (low EV/FCF) = potential undervaluation → green highlight. */
 app-watchlist .value-btn.computed.undervalued {
   border-color: #28a745;
   color: #28a745;
   background: rgba(40, 167, 69, 0.12);
+}
+
+/* Long payback (high EV/FCF) = richly priced → red highlight. */
+app-watchlist .value-btn.computed.expensive {
+  border-color: #dc3545;
+  color: #dc3545;
+  background: rgba(220, 53, 69, 0.12);
 }
 
 app-watchlist .news-panel {
