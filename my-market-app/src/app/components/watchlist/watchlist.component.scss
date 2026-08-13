@@ -651,6 +651,23 @@ h2 {
   filter: invert(0.7);
   cursor: pointer;
 }
+.note-textarea {
+  background: #0f1a30;
+  border: 1px solid #2a3a5e;
+  border-radius: 6px;
+  color: #e0e0e0;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+.note-textarea:focus {
+  border-color: #4a9eff;
+}
 .ts-modal__actions {
   display: flex;
   justify-content: flex-end;

@@ -31,6 +31,11 @@ export class WatchlistService {
     }
   }
 
+  /** Upper-cased tickers on a list (deduped), regardless of string/lot entry shape. */
+  getSymbols(name: string): string[] {
+    return [...new Set(this.getEntries(name).map(entry => this.#entrySymbol(entry)))];
+  }
+
   has(name: string, symbol: string): boolean {
     const upper = symbol.trim().toUpperCase();
     if (!upper) return false;

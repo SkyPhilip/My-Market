@@ -3,6 +3,7 @@ import { firstValueFrom, from } from 'rxjs';
 import { mergeMap, toArray } from 'rxjs/operators';
 import { AlpacaService } from './alpaca.service';
 import { FinnhubService } from './finnhub.service';
+import { WatchlistService } from './watchlist.service';
 import { AlpacaBar } from '../models/alpaca.models';
 import { FinnhubMetrics, FinnhubEarningsSurprise } from '../models/finnhub.models';
 import { SECTOR_SYMBOLS } from '../data/sector-symbols';
@@ -50,11 +51,14 @@ const STAGE2_CAP = 10;
 /** Trading-day history needed for a 200-day SMA plus a small buffer. */
 const HISTORY_DAYS = 400;
 const VOLUME_SURGE_MULTIPLE = 1.5;
+/** Tickers on this list are already owned and are never recommended. */
+const HOLDINGS_LIST = 'Current Holdings';
 
 @Injectable({ providedIn: 'root' })
 export class StockPickerService {
   private alpaca = inject(AlpacaService);
   private finnhub = inject(FinnhubService);
+  private watchlists = inject(WatchlistService);
 
   /**
    * Two-stage quality screen over the built-in sector universe:
@@ -63,8 +67,12 @@ export class StockPickerService {
    * Returns the top `count` picks, best first. Zero FMP calls.
    */
   async findPicks(count = 4, onProgress?: (message: string) => void): Promise<StockPick[]> {
-    const universe = [...new Set(Object.values(SECTOR_SYMBOLS).flat())];
+    const held = new Set(this.watchlists.getSymbols(HOLDINGS_LIST));
+    const universe = [...new Set(Object.values(SECTOR_SYMBOLS).flat())]
+      .filter(sym => !held.has(sym.toUpperCase()));
     const sectorOf = this.#buildSectorLookup();
+
+    if (!universe.length) return [];
 
     onProgress?.(`Scanning ${universe.length} symbols…`);
     const barsBySymbol = await this.#fetchDailyBars(universe);

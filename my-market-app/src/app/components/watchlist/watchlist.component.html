@@ -98,7 +98,6 @@
             <th class="sortable" (click)="sortBy('weightPercent')" title="This holding's total cost as a % of the whole portfolio's cost (all rows sum to 100%)">Weight % <span class="sort-icon">{{ sortIcon('weightPercent') }}</span></th>
             <th>Date Bought</th>
           }
-          <th class="news-col">Docs</th>
           <th></th>
         </tr>
       </thead>
@@ -236,15 +235,6 @@
                 }
               </td>
             }
-            <td class="news-col">
-              <button
-                type="button"
-                class="watchlist-btn news-btn"
-                (click)="openNews(row.symbol); $event.stopPropagation()"
-                [attr.aria-label]="'View news for ' + row.symbol"
-                title="View news"
-              >📰</button>
-            </td>
             <td class="row-actions">
               @if (copyToListName()) {
                 <button
@@ -259,13 +249,13 @@
           </tr>
           @if (isExpanded(row.lotId)) {
             <tr class="chart-row">
-              <td [attr.colspan]="(hasCostBasis() ? 20 : 11) + (isCurrentHoldings() ? -1 : 1)">
+              <td [attr.colspan]="(hasCostBasis() ? 19 : 10) + (isCurrentHoldings() ? -1 : 1)">
                 @if (row.chartLoading) {
                   <p class="chart-loading">Loading chart...</p>
                 } @else {
                   <div class="chart-panel" [class.fullscreen]="fullscreenLot() === row.lotId">
                     <div class="chart-toolbar">
-                      <span class="chart-title">{{ row.symbol }}<span class="chart-title__name">{{ row.name }}</span></span>
+                      <span class="chart-title" [style.color]="symbolColor(row)">{{ row.symbol }}<span class="chart-title__name">{{ row.name }}</span></span>
                       @for (range of timeRanges; track range) {
                         <button
                           type="button"
@@ -389,6 +379,14 @@
                         [attr.aria-label]="'View news for ' + row.symbol"
                         title="View news"
                       >📰 News</button>
+                      <button
+                        type="button"
+                        class="range-btn note-btn"
+                        [class.active]="!!row.note"
+                        (click)="openNote(row)"
+                        [attr.aria-label]="'Note for ' + row.symbol"
+                        [title]="row.note ? ('Note: ' + row.note) : 'Add a short note to yourself about this lot'"
+                      >📝 Note</button>
                       @if (row.range === '1D') {
                         <button
                           type="button"
@@ -657,6 +655,28 @@
         <div class="ts-modal__actions">
           <button type="button" class="watchlist-btn io-btn" (click)="cancelTrailingStop()">Cancel</button>
           <button type="button" class="watchlist-btn add-btn" (click)="confirmTrailingStop()">{{ tsMode() === 'limit' ? 'Set limit' : 'Set stop' }}</button>
+        </div>
+      </div>
+    </div>
+  }
+  @if (noteForm(); as nf) {
+    <div class="ts-modal-backdrop">
+      <div class="ts-modal" role="dialog" aria-modal="true" aria-labelledby="note-modal-title">
+        <h3 id="note-modal-title" class="ts-modal__title">Note · {{ nf.symbol }}</h3>
+        <label class="ts-modal__field">
+          <span>Comment</span>
+          <textarea
+            class="note-textarea"
+            [(ngModel)]="noteInput"
+            name="note"
+            rows="4"
+            maxlength="280"
+            placeholder="e.g. Trim half if it retests the breakout"
+          ></textarea>
+        </label>
+        <div class="ts-modal__actions">
+          <button type="button" class="watchlist-btn io-btn" (click)="cancelNote()">Cancel</button>
+          <button type="button" class="watchlist-btn add-btn" (click)="saveNote()">Save</button>
         </div>
       </div>
     </div>
