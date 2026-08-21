@@ -5,8 +5,16 @@ import { createChart, IChartApi, ISeriesApi, LineSeries, LineData, Time } from '
 import { AlpacaService } from '../../services/alpaca.service';
 import { FmpService } from '../../services/fmp.service';
 import { WatchlistService } from '../../services/watchlist.service';
-import { AlpacaSnapshot, AlpacaBar, AlpacaMover } from '../../models/alpaca.models';
+import { AlpacaSnapshot, AlpacaBar } from '../../models/alpaca.models';
 import { SECTOR_SYMBOLS } from '../../data/sector-symbols';
+
+interface MoverRow {
+  symbol: string;
+  sector: string;
+  price: number;
+  change: number;
+  percentChange: number;
+}
 
 interface SectorHolding {
   symbol: string;
@@ -44,6 +52,12 @@ interface FlowSeries {
 const BENCHMARK = 'SPY';
 const LOOKBACK_DAYS = 92; // ~3 months
 const HISTORY_KEY = 'money_flow_history';
+const MOVERS_SHOWN = 10;
+/** First sector wins for a ticker listed under more than one. */
+const SYMBOL_SECTOR: Record<string, string> = Object.fromEntries(
+  Object.entries(SECTOR_SYMBOLS).flatMap(([sector, symbols]) => symbols.map(s => [s, sector] as const)),
+);
+
 const SECTOR_COLORS = [
   '#4a9eff', '#28a745', '#ffc107', '#b07cff', '#ff7d86', '#40e0d0',
   '#f0934e', '#9ac4ff', '#f06292', '#8bc34a', '#e0e0e0',
@@ -68,8 +82,8 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
   readonly flowHistory = signal<FlowSeries[]>([]);
   readonly hiddenSectors = signal<Set<string>>(new Set());
   readonly expandedSector = signal<string | null>(null);
-  readonly moversGainers = signal<AlpacaMover[]>([]);
-  readonly moversLosers = signal<AlpacaMover[]>([]);
+  readonly moversGainers = signal<MoverRow[]>([]);
+  readonly moversLosers = signal<MoverRow[]>([]);
   // Bumped after lazily fetching company names so the view re-reads the cache.
   private readonly namesVersion = signal(0);
 
@@ -95,10 +109,10 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
   async load(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
-    this.loadMovers();
     try {
       const allSymbols = Array.from(new Set([BENCHMARK, ...Object.values(SECTOR_SYMBOLS).flat()]));
       const snaps = await this.fetchAllSnapshots(allSymbols);
+      this.buildMovers(snaps, allSymbols.filter(s => s !== BENCHMARK));
       const spyChange = this.changePct(snaps[BENCHMARK]);
 
       const flows: SectorFlow[] = Object.entries(SECTOR_SYMBOLS).map(([sector, symbols]) => {
@@ -139,24 +153,35 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Top market gainers/losers for the current session (Alpaca screener). Non-fatal. */
-  async loadMovers(): Promise<void> {
+  /** Best/worst performers inside the tracked sector universe; reuses the snapshots already fetched. */
+  private buildMovers(snaps: Record<string, AlpacaSnapshot>, symbols: string[]): void {
+    const rows = symbols
+      .map(symbol => {
+        const snap = snaps[symbol];
+        const percentChange = this.changePct(snap);
+        const price = snap?.latestTrade?.p ?? snap?.minuteBar?.c ?? snap?.dailyBar?.c ?? null;
+        const prev = snap?.prevDailyBar?.c ?? null;
+        if (percentChange === null || price === null || prev === null) return null;
+        return { symbol, sector: SYMBOL_SECTOR[symbol] ?? '', price, change: price - prev, percentChange };
+      })
+      .filter((row): row is MoverRow => row !== null)
+      .sort((a, b) => b.percentChange - a.percentChange);
+
+    this.moversGainers.set(rows.filter(r => r.percentChange > 0).slice(0, MOVERS_SHOWN));
+    this.moversLosers.set(rows.filter(r => r.percentChange < 0).slice(-MOVERS_SHOWN).reverse());
+    this.loadMoverNames();
+  }
+
+  /** Company names for the movers panel; non-fatal and usually a cache hit. */
+  private async loadMoverNames(): Promise<void> {
+    const symbols = [...this.moversGainers(), ...this.moversLosers()].map(m => m.symbol);
+    const uncached = symbols.filter(s => !this.fmp.getCachedCompanyName(s));
+    if (!uncached.length) return;
     try {
-      const res = await firstValueFrom(this.alpaca.getMovers(10));
-      this.moversGainers.set(res.body?.gainers ?? []);
-      this.moversLosers.set(res.body?.losers ?? []);
-      const symbols = [...this.moversGainers(), ...this.moversLosers()].map(m => m.symbol);
-      const uncached = symbols.filter(s => !this.fmp.getCachedCompanyName(s));
-      if (uncached.length) {
-        try {
-          await firstValueFrom(this.fmp.getProfiles(uncached));
-          this.namesVersion.update(v => v + 1);
-        } catch {
-          // Names are non-critical; symbols remain as the fallback display.
-        }
-      }
+      await firstValueFrom(this.fmp.getProfiles(uncached));
+      this.namesVersion.update(v => v + 1);
     } catch {
-      // movers are supplementary; ignore failures
+      // Names are non-critical; symbols remain as the fallback display.
     }
   }
 
