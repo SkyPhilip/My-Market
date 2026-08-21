@@ -13,6 +13,7 @@ import { NotificationService } from '../../services/notification.service';
 import { WatchlistService } from '../../services/watchlist.service';
 import { HistoryService } from '../../services/history.service';
 import { StopMonitorService, StopMode, LotStopConfig } from '../../services/stop-monitor.service';
+import { PLATFORMS, PlatformOption, platformById } from '../../data/platforms';
 import { LineData, CandlestickData, HistogramData, Time } from 'lightweight-charts';
 
 type TimeRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'All';
@@ -209,18 +210,7 @@ type SortDirection = 'asc' | 'desc';
 
 type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number; lotId?: string; addedAt?: string; platform?: string; note?: string };
 
-interface PlatformOption {
-  id: string;
-  label: string;
-  color: string;
-}
-
-/** Brokerage platforms a holding can live on; `color` tints the symbol text. Add entries here to offer more. */
-const PLATFORMS: PlatformOption[] = [
-  { id: 'schwab', label: 'Schwab', color: '#4a9eff' },
-  { id: 'jpmorgan', label: 'JP Morgan', color: '#e3b341' },
-  { id: 'other', label: 'Other', color: '#e0e0e0' },
-];
+const HOLDINGS_LIST = 'Current Holdings';
 
 @Component({
   selector: 'app-watchlist',
@@ -470,12 +460,29 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
   /** Platform metadata for a lot's stored id (null when unset or unknown). */
   platformFor(id: string | null): PlatformOption | null {
-    return id ? this.platforms.find(p => p.id === id) ?? null : null;
+    return platformById(id);
   }
 
   /** Symbol text color for a holding's platform (null → default styling). */
   symbolColor(row: WatchlistRow): string | null {
     return this.platformFor(row.platform)?.color ?? null;
+  }
+
+  /** Platform of the matching Current Holdings lot, for tickers watched on another list. */
+  heldPlatform(symbol: string): PlatformOption | null {
+    this.watchlistService.version(HOLDINGS_LIST)(); // reactive dependency
+    return platformById(this.watchlistService.getPlatform(HOLDINGS_LIST, symbol));
+  }
+
+  /** Symbol text color for a watched ticker that is also a current holding (null → default). */
+  watchedSymbolColor(symbol: string): string | null {
+    return this.heldPlatform(symbol)?.color ?? null;
+  }
+
+  /** Tooltip flagging a watched ticker that is already held ('' when it is not). */
+  watchedSymbolTitle(symbol: string): string {
+    const platform = this.heldPlatform(symbol);
+    return platform ? `Also held at ${platform.label}` : '';
   }
 
   /** Platform ordering key for the Symbol sort (unset lots sort last). */

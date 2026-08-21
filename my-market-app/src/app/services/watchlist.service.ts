@@ -1,6 +1,6 @@
 import { Injectable, Signal, WritableSignal, signal } from '@angular/core';
 
-export type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number };
+export type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number; platform?: string };
 
 /**
  * Cross-component access point for watchlists persisted in localStorage under
@@ -40,6 +40,16 @@ export class WatchlistService {
     const upper = symbol.trim().toUpperCase();
     if (!upper) return false;
     return this.getEntries(name).some(entry => this.#entrySymbol(entry) === upper);
+  }
+
+  /** Platform id stored on the first lot of `symbol` in `name` (null when absent or unset). */
+  getPlatform(name: string, symbol: string): string | null {
+    const upper = symbol.trim().toUpperCase();
+    if (!upper) return null;
+    const lot = this.getEntries(name).find(
+      entry => typeof entry !== 'string' && this.#entrySymbol(entry) === upper && !!entry.platform,
+    );
+    return lot && typeof lot !== 'string' ? lot.platform ?? null : null;
   }
 
   /** Appends a plain-string ticker if absent; returns true if added, false if empty/duplicate. */

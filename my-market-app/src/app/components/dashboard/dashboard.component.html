@@ -128,7 +128,7 @@
                     <tbody>
                       @for (row of holdingsFor(card.symbol); track row.symbol) {
                         <tr>
-                          <td class="sym">{{ row.symbol }}</td>
+                          <td class="sym" [style.color]="holdingSymbolColor(row.symbol)" [title]="holdingSymbolTitle(row.symbol)">{{ row.symbol }}</td>
                           <td class="company">{{ row.name }}</td>
                           <td class="num">
                             @if (row.price !== null) {

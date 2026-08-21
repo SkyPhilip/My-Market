@@ -4,6 +4,7 @@ import { AlpacaService } from '../../services/alpaca.service';
 import { ChartComponent } from '../chart/chart.component';
 import { WatchlistComponent } from '../watchlist/watchlist.component';
 import { WatchlistService } from '../../services/watchlist.service';
+import { platformById } from '../../data/platforms';
 import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaBarsResponse, AlpacaErrorBody, AlpacaSnapshot, AlpacaSnapshotsResponse } from '../../models/alpaca.models';
 import { LineData, HistogramData, Time } from 'lightweight-charts';
@@ -136,6 +137,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private static readonly REFRESH_MS = 15 * 60 * 1000;
 
   private static readonly SYMBOLS = ['DIA', 'SPY', 'QQQ'] as const;
+  private static readonly HOLDINGS_LIST = 'Current Holdings';
   private static readonly CARD_DEFAULTS: IndexCard[] = [
     { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], ma20Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#4a9eff' },
     { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], ma20Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#28a745' },
@@ -263,6 +265,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
   inWatchList(symbol: string): boolean {
     this.watchlistService.version('Watch List')(); // reactive dependency
     return this.watchlistService.has('Watch List', symbol);
+  }
+
+  /** Platform tint for a top-holding symbol: colored only while the ticker sits in Current Holdings. */
+  holdingSymbolColor(symbol: string): string | null {
+    this.watchlistService.version(DashboardComponent.HOLDINGS_LIST)(); // reactive dependency
+    return platformById(this.watchlistService.getPlatform(DashboardComponent.HOLDINGS_LIST, symbol))?.color ?? null;
+  }
+
+  /** Tooltip naming the platform a top-holding symbol is held on ('' when not a current holding). */
+  holdingSymbolTitle(symbol: string): string {
+    this.watchlistService.version(DashboardComponent.HOLDINGS_LIST)(); // reactive dependency
+    const platform = platformById(this.watchlistService.getPlatform(DashboardComponent.HOLDINGS_LIST, symbol));
+    return platform ? `Held at ${platform.label}` : '';
   }
 
   isHoldingsOpen(symbol: string): boolean {

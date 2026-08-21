@@ -133,7 +133,11 @@
                   >{{ row.symbol }}</span>
                 }
               } @else {
-                <span class="symbol-text">{{ row.symbol }}</span>
+                <span
+                  class="symbol-text"
+                  [style.color]="watchedSymbolColor(row.symbol)"
+                  [title]="watchedSymbolTitle(row.symbol)"
+                >{{ row.symbol }}</span>
               }
               @if (trailingStopTriggered(row.lotId)) {
                 <button
