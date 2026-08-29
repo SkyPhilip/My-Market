@@ -93,10 +93,28 @@
           </div>
         </div>
         <div class="settings-column">
+          <div class="setting-item setting-item--editable">
+            <div class="setting-text">
+              <span class="label">Chart moving averages</span>
+              <span class="hint">Choose which SMAs get a toggle button on every chart (watchlist + index charts).</span>
+            </div>
+            <div class="setting-control ma-period-checks">
+              @for (period of maPeriods; track period) {
+                <label class="ma-period-check">
+                  <input
+                    type="checkbox"
+                    [checked]="isMaPeriodEnabled(period)"
+                    (change)="toggleMaPeriod(period)"
+                  />
+                  {{ period }}MA
+                </label>
+              }
+            </div>
+          </div>
           <div class="setting-item">
             <div class="setting-text">
               <span class="label">Restore defaults</span>
-              <span class="hint">Reset poll frequency ({{ settingBounds.pollSeconds.min }}–{{ settingBounds.pollSeconds.max }}s) and alert threshold ({{ settingBounds.warnPct.min }}–{{ settingBounds.warnPct.max }}%).</span>
+              <span class="hint">Reset poll frequency ({{ settingBounds.pollSeconds.min }}–{{ settingBounds.pollSeconds.max }}s), alert threshold ({{ settingBounds.warnPct.min }}–{{ settingBounds.warnPct.max }}%), and chart moving averages.</span>
             </div>
             <button class="retry-btn" (click)="resetAppSettings()">Reset</button>
           </div>

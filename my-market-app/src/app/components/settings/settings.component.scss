@@ -77,6 +77,18 @@
       font-size: 14px;
       min-width: 28px;
     }
+    .ma-period-checks {
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .ma-period-check {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #e0e0e0;
+      font-size: 14px;
+      cursor: pointer;
+    }
     .retry-btn {
       background: #4a9eff;
       border: none;

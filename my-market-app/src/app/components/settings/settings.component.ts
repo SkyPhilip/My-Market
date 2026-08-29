@@ -17,6 +17,7 @@ export class SettingsComponent implements OnInit {
   private alpacaService = inject(AlpacaService);
   readonly appSettings = inject(AppSettingsService);
   readonly settingBounds = AppSettingsService.BOUNDS;
+  readonly maPeriods = AppSettingsService.MA_PERIODS;
 
   fetchAccount = fetchFnWithState<AlpacaAccount, AlpacaErrorBody>(() => this.alpacaService.getAccount());
 
@@ -59,6 +60,14 @@ export class SettingsComponent implements OnInit {
 
   resetAppSettings(): void {
     this.appSettings.reset();
+  }
+
+  isMaPeriodEnabled(period: number): boolean {
+    return this.appSettings.movingAveragePeriods().includes(period);
+  }
+
+  toggleMaPeriod(period: number): void {
+    this.appSettings.toggleMovingAveragePeriod(period);
   }
 
   private async loadHolidays(): Promise<void> {

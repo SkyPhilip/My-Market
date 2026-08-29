@@ -1,6 +1,12 @@
 import { Component, ElementRef, Input, OnChanges, OnDestroy, SimpleChanges, ViewChild, AfterViewInit } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries, HistogramSeries, HistogramData, CandlestickSeries, CandlestickData, MouseEventParams, createSeriesMarkers, ISeriesMarkersPluginApi, SeriesMarker, LineStyle } from 'lightweight-charts';
+import { maColor } from '../../utils/moving-averages';
+
+export interface MaSeriesInput {
+  period: number;
+  data: LineData<Time>[];
+}
 
 export type DivergenceType = 'regBull' | 'hidBull' | 'regBear' | 'hidBear';
 
@@ -86,14 +92,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @ViewChild('maTooltip') maTooltip!: ElementRef<HTMLDivElement>;
   @Input() data: LineData<Time>[] = [];
   @Input() color = '#4a9eff';
-  @Input() ma20Data: LineData<Time>[] = [];
-  @Input() showMovingAverage20 = false;
-  @Input() maData: LineData<Time>[] = [];
-  @Input() showMovingAverage = true;
-  @Input() ma150Data: LineData<Time>[] = [];
-  @Input() showMovingAverage150 = false;
-  @Input() ma200Data: LineData<Time>[] = [];
-  @Input() showMovingAverage200 = false;
+  @Input() maSeries: MaSeriesInput[] = [];
   @Input() volumeData: HistogramData<Time>[] = [];
   @Input() volumeProfileData: VolumeProfileBin[] = [];
   @Input() showRangeLines = false;
@@ -130,10 +129,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   private chart: IChartApi | null = null;
   private series: ISeriesApi<'Line'> | null = null;
   private candleSeries: ISeriesApi<'Candlestick'> | null = null;
-  private maSeries: ISeriesApi<'Line'> | null = null;
-  private ma20Series: ISeriesApi<'Line'> | null = null;
-  private ma150Series: ISeriesApi<'Line'> | null = null;
-  private ma200Series: ISeriesApi<'Line'> | null = null;
+  private maLineSeries = new Map<number, ISeriesApi<'Line'>>();
   private volumeSeries: ISeriesApi<'Histogram'> | null = null;
   private rangeHighSeries: ISeriesApi<'Line'> | null = null;
   private rangeLowSeries: ISeriesApi<'Line'> | null = null;
@@ -163,17 +159,8 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
       this.#fitOrFocus();
       requestAnimationFrame(() => this.renderVolumeProfile());
     }
-    if ((changes['ma20Data'] || changes['showMovingAverage20']) && this.ma20Series) {
-      this.updateMovingAverage20Series();
-    }
-    if ((changes['maData'] || changes['showMovingAverage']) && this.maSeries) {
-      this.updateMovingAverageSeries();
-    }
-    if ((changes['ma150Data'] || changes['showMovingAverage150']) && this.ma150Series) {
-      this.updateMovingAverage150Series();
-    }
-    if ((changes['ma200Data'] || changes['showMovingAverage200']) && this.ma200Series) {
-      this.updateMovingAverage200Series();
+    if (changes['maSeries'] && this.chart) {
+      this.updateMaLineSeries();
     }
     if ((changes['peerData'] || changes['showPeer']) && this.peerSeries) {
       this.updatePeerSeries();
@@ -277,34 +264,6 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.sessionShade = new SessionShadePrimitive();
     this.candleSeries.attachPrimitive(this.sessionShade);
     this.sessionShade.setState(this.showSessionShade && this.data.length > 0, this.sessionShadeUntil);
-
-    this.ma20Series = this.chart.addSeries(LineSeries, {
-      color: '#4dd0e1',
-      lineWidth: 1,
-      lastValueVisible: false,
-      priceLineVisible: false,
-    });
-
-    this.maSeries = this.chart.addSeries(LineSeries, {
-      color: '#f0c040',
-      lineWidth: 1,
-      lastValueVisible: false,
-      priceLineVisible: false,
-    });
-
-    this.ma150Series = this.chart.addSeries(LineSeries, {
-      color: '#b07cff',
-      lineWidth: 1,
-      lastValueVisible: false,
-      priceLineVisible: false,
-    });
-
-    this.ma200Series = this.chart.addSeries(LineSeries, {
-      color: '#ec407a',
-      lineWidth: 1,
-      lastValueVisible: false,
-      priceLineVisible: false,
-    });
 
     this.peerSeries = this.chart.addSeries(LineSeries, {
       color: '#28a745',
@@ -420,10 +379,7 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
 
     this.updateTrailingStopLine();
 
-    this.updateMovingAverage20Series();
-    this.updateMovingAverageSeries();
-    this.updateMovingAverage150Series();
-    this.updateMovingAverage200Series();
+    this.updateMaLineSeries();
     this.updatePeerSeries();
     this.updateMacd();
     this.updateDivergences();
@@ -475,24 +431,15 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
         ? `<span style="color:#7f9ad1">Vol: ${this.volumeSeries.priceFormatter().format(volValue!)}</span>`
         : '';
 
-      const ma20Value = readValue(this.ma20Series);
-      const ma50Value = readValue(this.maSeries);
-      const ma150Value = readValue(this.ma150Series);
-      const ma200Value = readValue(this.ma200Series);
-      const ma20Text = this.showMovingAverage20 && Number.isFinite(ma20Value)
-        ? `<span style="color:#4dd0e1">20MA: ${ma20Value!.toFixed(2)}</span>`
-        : '';
-      const ma50Text = this.showMovingAverage && Number.isFinite(ma50Value)
-        ? `<span style="color:#f0c040">50MA: ${ma50Value!.toFixed(2)}</span>`
-        : '';
-      const ma150Text = this.showMovingAverage150 && Number.isFinite(ma150Value)
-        ? `<span style="color:#b07cff">150MA: ${ma150Value!.toFixed(2)}</span>`
-        : '';
-      const ma200Text = this.showMovingAverage200 && Number.isFinite(ma200Value)
-        ? `<span style="color:#ec407a">200MA: ${ma200Value!.toFixed(2)}</span>`
-        : '';
+      const maText = [...this.maLineSeries.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([period, s]) => {
+          const v = readValue(s);
+          return Number.isFinite(v) ? `<span style="color:${maColor(period)}">${period}MA: ${v!.toFixed(2)}</span>` : '';
+        })
+        .filter(Boolean);
 
-      const readoutParts = [volText, ma20Text, ma50Text, ma150Text, ma200Text].filter(Boolean);
+      const readoutParts = [volText, ...maText].filter(Boolean);
       if (!readoutParts.length) {
         maTooltip.style.display = 'none';
       } else {
@@ -588,48 +535,31 @@ export class ChartComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.trailingStopSeries.setData(stopData);
   }
 
-  private updateMovingAverage20Series(): void {
-    if (!this.ma20Series) return;
+  /** Adds/removes/updates one LineSeries per requested MA period; presence in `maSeries` = visible. */
+  private updateMaLineSeries(): void {
+    if (!this.chart) return;
+    const wanted = new Map(this.maSeries.map(m => [m.period, m.data]));
 
-    if (!this.showMovingAverage20 || !this.ma20Data.length) {
-      this.ma20Series.setData([]);
-      return;
+    for (const [period, series] of this.maLineSeries) {
+      if (!wanted.has(period)) {
+        this.chart.removeSeries(series);
+        this.maLineSeries.delete(period);
+      }
     }
 
-    this.ma20Series.setData(this.ma20Data);
-  }
-
-  private updateMovingAverageSeries(): void {
-    if (!this.maSeries) return;
-
-    if (!this.showMovingAverage || !this.maData.length) {
-      this.maSeries.setData([]);
-      return;
+    for (const [period, data] of wanted) {
+      let lineSeries = this.maLineSeries.get(period);
+      if (!lineSeries) {
+        lineSeries = this.chart.addSeries(LineSeries, {
+          color: maColor(period),
+          lineWidth: 1,
+          lastValueVisible: false,
+          priceLineVisible: false,
+        });
+        this.maLineSeries.set(period, lineSeries);
+      }
+      lineSeries.setData(data);
     }
-
-    this.maSeries.setData(this.maData);
-  }
-
-  private updateMovingAverage150Series(): void {
-    if (!this.ma150Series) return;
-
-    if (!this.showMovingAverage150 || !this.ma150Data.length) {
-      this.ma150Series.setData([]);
-      return;
-    }
-
-    this.ma150Series.setData(this.ma150Data);
-  }
-
-  private updateMovingAverage200Series(): void {
-    if (!this.ma200Series) return;
-
-    if (!this.showMovingAverage200 || !this.ma200Data.length) {
-      this.ma200Series.setData([]);
-      return;
-    }
-
-    this.ma200Series.setData(this.ma200Data);
   }
 
   private updatePeerSeries(): void {

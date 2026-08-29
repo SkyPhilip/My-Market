@@ -15,6 +15,8 @@ import { HistoryService } from '../../services/history.service';
 import { StopMonitorService, StopMode, LotStopConfig } from '../../services/stop-monitor.service';
 import { PLATFORMS, PlatformOption, platformById } from '../../data/platforms';
 import { LineData, CandlestickData, HistogramData, Time } from 'lightweight-charts';
+import { AppSettingsService } from '../../services/app-settings.service';
+import { maColor } from '../../utils/moving-averages';
 
 type TimeRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'All';
 
@@ -166,10 +168,8 @@ interface WatchlistRow {
   candleData: CandlestickData<Time>[];
   chartLoading: boolean;
   volume: number | null;
-  ma20Data: LineData<Time>[];
-  maData: LineData<Time>[];
-  ma150Data: LineData<Time>[];
-  ma200Data: LineData<Time>[];
+  maData: Partial<Record<number, LineData<Time>[]>>;
+  visibleMas: Set<number>;
   volumeData: HistogramData<Time>[];
   volumeProfileData: VolumeProfileBin[];
   rangeHigh: number | null;
@@ -180,10 +180,6 @@ interface WatchlistRow {
   openingRangeLow: number | null;
   sessionShadeUntil: Time | null;
   range: TimeRange;
-  showMovingAverage20: boolean;
-  showMovingAverage: boolean;
-  showMovingAverage150: boolean;
-  showMovingAverage200: boolean;
   showRangeLevels: boolean;
   peerSymbol: string | null;
   peerName: string | null;
@@ -233,6 +229,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   private watchlistService = inject(WatchlistService);
   private historyService = inject(HistoryService);
   private stopMonitor = inject(StopMonitorService);
+  readonly appSettingsService = inject(AppSettingsService);
 
   heading = input.required<string>();
   watchlistName = input.required<string>();
@@ -616,7 +613,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: lot.addedAt, platform: lot.platform, note: lot.note, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
+        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, maData: {}, visibleMas: new Set([200]), volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: lot.addedAt, platform: lot.platform, note: lot.note, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -645,7 +642,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     const gainLoss = price !== null && costBasis !== null ? +(price - costBasis).toFixed(2) : null;
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
-    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, ma20Data: [], maData: [], ma150Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showMovingAverage20: false, showMovingAverage: false, showMovingAverage150: false, showMovingAverage200: true, showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: null, platform: null, note: null, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
+    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, maData: {}, visibleMas: new Set([200]), volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: null, platform: null, note: null, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -786,10 +783,8 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         chartData: [],
         candleData: [],
         chartLoading: false,
-        ma20Data: [],
-        maData: [],
-        ma150Data: [],
-        ma200Data: [],
+        maData: {},
+        visibleMas: new Set([200]),
         volumeData: [],
         volumeProfileData: [],
         rangeHigh: null,
@@ -800,10 +795,6 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         openingRangeLow: null,
         sessionShadeUntil: null,
         range: '1D',
-        showMovingAverage20: false,
-        showMovingAverage: false,
-        showMovingAverage150: false,
-        showMovingAverage200: true,
         showRangeLevels: false,
         peerSymbol: null,
         peerName: null,
@@ -1397,28 +1388,22 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     return this.narrowedBound(row, 'low');
   }
 
-  toggleMovingAverage(lotId: string): void {
+  toggleMa(lotId: string, period: number): void {
     const row = this.watchlistRows().find(r => r.lotId === lotId);
     if (!row) return;
-    this.patchRow(lotId, { showMovingAverage: !row.showMovingAverage });
+    const next = new Set(row.visibleMas);
+    if (next.has(period)) next.delete(period); else next.add(period);
+    this.patchRow(lotId, { visibleMas: next });
   }
 
-  toggleMovingAverage20(lotId: string): void {
-    const row = this.watchlistRows().find(r => r.lotId === lotId);
-    if (!row) return;
-    this.patchRow(lotId, { showMovingAverage20: !row.showMovingAverage20 });
+  maColor(period: number): string {
+    return maColor(period);
   }
 
-  toggleMovingAverage150(lotId: string): void {
-    const row = this.watchlistRows().find(r => r.lotId === lotId);
-    if (!row) return;
-    this.patchRow(lotId, { showMovingAverage150: !row.showMovingAverage150 });
-  }
-
-  toggleMovingAverage200(lotId: string): void {
-    const row = this.watchlistRows().find(r => r.lotId === lotId);
-    if (!row) return;
-    this.patchRow(lotId, { showMovingAverage200: !row.showMovingAverage200 });
+  maSeriesFor(row: WatchlistRow): { period: number; data: LineData<Time>[] }[] {
+    return [...row.visibleMas]
+      .map(period => ({ period, data: row.maData[period] ?? [] }))
+      .filter(m => m.data.length > 0);
   }
 
   toggleCostBasis(lotId: string): void {
@@ -1701,6 +1686,25 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     return `${years}y ago`;
   }
 
+  /** True N-trading-day SMAs (per `periods`) from daily closes, one value PER SESSION DATE (so a
+   *  multi-day intraday chart shows the real day-to-day drift instead of one static number). */
+  async #computeDailyMovingAverages(symbol: string, periods: number[]): Promise<Map<string, Partial<Record<number, number>>>> {
+    const byDate = new Map<string, Partial<Record<number, number>>>();
+    const start = new Date(Date.now() - 400 * 86_400_000).toISOString().split('T')[0];
+    const result = await firstValueFrom(this.alpacaService.getBars(symbol, '1Day', start, undefined, 1000));
+    const bars = result?.body?.bars ?? [];
+    if (!bars.length) return byDate;
+    const closes = bars.map(b => b.c);
+    for (let i = 0; i < bars.length; i++) {
+      const entry: Partial<Record<number, number>> = {};
+      for (const period of periods) {
+        if (i + 1 >= period) entry[period] = +(closes.slice(i + 1 - period, i + 1).reduce((s, c) => s + c, 0) / period).toFixed(2);
+      }
+      byDate.set(etSessionDate(bars[i].t), entry);
+    }
+    return byDate;
+  }
+
   private async loadChart(lotId: string, silent = false): Promise<void> {
     const targetRow = this.watchlistRows().find(r => r.lotId === lotId);
     if (!targetRow) return;
@@ -1755,53 +1759,43 @@ export class WatchlistComponent implements OnInit, OnDestroy {
           };
         }
       });
-      // Moving averages counted in bars, so the window scales with the timeframe fidelity
-      // (e.g. 20 bars = 20 minutes on 1D, 20 days on 6M). Cumulative until enough bars exist.
-      const ma20Data: LineData<Time>[] = [];
-      const maData: LineData<Time>[] = [];
-      const ma150Data: LineData<Time>[] = [];
-      const ma200Data: LineData<Time>[] = [];
-      const period20 = 20;
-      const period = 50;
-      const period150 = 150;
-      const period200 = 200;
-      if (chartData.length > 0) {
-        let sum20 = 0;
-        let sum = 0;
-        let sum150 = 0;
-        let sum200 = 0;
-        for (let i = 0; i < chartData.length; i++) {
-          sum20 += chartData[i].value;
-          sum += chartData[i].value;
-          sum150 += chartData[i].value;
-          sum200 += chartData[i].value;
-          if (i >= period20) {
-            sum20 -= chartData[i - period20].value;
-            ma20Data.push({ time: chartData[i].time, value: +(sum20 / period20).toFixed(2) });
-          } else {
-            ma20Data.push({ time: chartData[i].time, value: +(sum20 / (i + 1)).toFixed(2) });
+      // Moving averages must represent true N-TRADING-DAY SMAs everywhere so they match standard
+      // usage (and the Stock Picker's 200-day gate). On intraday ranges (1D/5D/1M) the loaded bars
+      // are minutes/hours, not days, so those MAs come from a separate daily-bar fetch and are
+      // looked up PER SESSION DATE (stepping day-to-day, not a single flat value). Only the periods
+      // enabled in Settings are computed.
+      const periods = this.appSettingsService.movingAveragePeriods();
+      const maData: Partial<Record<number, LineData<Time>[]>> = {};
+      for (const period of periods) maData[period] = [];
+      if (isIntraday) {
+        const byDate = await this.#computeDailyMovingAverages(symbol, periods);
+        if (byDate.size && chartData.length) {
+          const dates = [...byDate.keys()].sort();
+          for (let i = 0; i < bars.length; i++) {
+            const d = etSessionDate(bars[i].t);
+            // Fall back to the latest known prior session (e.g. today, before its own daily bar lands).
+            const mas = byDate.get(d) ?? byDate.get([...dates].reverse().find(x => x <= d) ?? dates[0]);
+            const time = chartData[i].time;
+            for (const period of periods) {
+              const v = mas?.[period];
+              if (v != null) maData[period]!.push({ time, value: v });
+            }
           }
-
-          if (i >= period) {
-            sum -= chartData[i - period].value;
-            maData.push({ time: chartData[i].time, value: +(sum / period).toFixed(2) });
-          } else {
-            maData.push({ time: chartData[i].time, value: +(sum / (i + 1)).toFixed(2) });
+        }
+      } else if (chartData.length > 0) {
+        for (const period of periods) {
+          const arr: LineData<Time>[] = [];
+          let sum = 0;
+          for (let i = 0; i < chartData.length; i++) {
+            sum += chartData[i].value;
+            if (i >= period) {
+              sum -= chartData[i - period].value;
+              arr.push({ time: chartData[i].time, value: +(sum / period).toFixed(2) });
+            } else {
+              arr.push({ time: chartData[i].time, value: +(sum / (i + 1)).toFixed(2) });
+            }
           }
-
-          if (i >= period150) {
-            sum150 -= chartData[i - period150].value;
-            ma150Data.push({ time: chartData[i].time, value: +(sum150 / period150).toFixed(2) });
-          } else {
-            ma150Data.push({ time: chartData[i].time, value: +(sum150 / (i + 1)).toFixed(2) });
-          }
-
-          if (i >= period200) {
-            sum200 -= chartData[i - period200].value;
-            ma200Data.push({ time: chartData[i].time, value: +(sum200 / period200).toFixed(2) });
-          } else {
-            ma200Data.push({ time: chartData[i].time, value: +(sum200 / (i + 1)).toFixed(2) });
-          }
+          maData[period] = arr;
         }
       }
       // Build volume data from bars, colored by candle direction (close vs open).
@@ -1831,10 +1825,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
           chartData,
           candleData,
           chartLoading: false,
-          ma20Data,
           maData,
-          ma150Data,
-          ma200Data,
           volumeData,
           volumeProfileData,
           rangeHigh: rangeLevels?.rangeHigh ?? null,

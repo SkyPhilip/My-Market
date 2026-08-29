@@ -383,57 +383,18 @@ app-watchlist .range-btn.div-btn.div-bear.active {
   border-color: #d50000;
   color: #fff;
 }
-app-watchlist .range-btn.ma50-btn {
-  border-color: rgba(240, 192, 64, 0.55);
-  color: #f0c040;
+app-watchlist .range-btn.ma-btn {
+  border-color: color-mix(in srgb, var(--ma-color) 55%, transparent);
+  color: var(--ma-color);
 }
-app-watchlist .range-btn.ma50-btn:hover {
-  border-color: #f0c040;
-  color: #f6d16d;
+app-watchlist .range-btn.ma-btn:hover {
+  border-color: var(--ma-color);
+  color: color-mix(in srgb, var(--ma-color) 80%, #fff);
 }
-app-watchlist .range-btn.ma50-btn.active {
-  background: #f0c040;
-  border-color: #f0c040;
+app-watchlist .range-btn.ma-btn.active {
+  background: var(--ma-color);
+  border-color: var(--ma-color);
   color: #1a1a2e;
-}
-app-watchlist .range-btn.ma20-btn {
-  border-color: rgba(77, 208, 225, 0.55);
-  color: #4dd0e1;
-}
-app-watchlist .range-btn.ma20-btn:hover {
-  border-color: #4dd0e1;
-  color: #7ee0ec;
-}
-app-watchlist .range-btn.ma20-btn.active {
-  background: #4dd0e1;
-  border-color: #4dd0e1;
-  color: #1a1a2e;
-}
-app-watchlist .range-btn.ma150-btn {
-  border-color: rgba(176, 124, 255, 0.6);
-  color: #b07cff;
-}
-app-watchlist .range-btn.ma150-btn:hover {
-  border-color: #b07cff;
-  color: #c7a0ff;
-}
-app-watchlist .range-btn.ma150-btn.active {
-  background: #b07cff;
-  border-color: #b07cff;
-  color: #fff;
-}
-app-watchlist .range-btn.ma200-btn {
-  border-color: rgba(236, 64, 122, 0.6);
-  color: #ec407a;
-}
-app-watchlist .range-btn.ma200-btn:hover {
-  border-color: #ec407a;
-  color: #f27ca4;
-}
-app-watchlist .range-btn.ma200-btn.active {
-  background: #ec407a;
-  border-color: #ec407a;
-  color: #fff;
 }
 app-watchlist .range-btn.cost-basis-btn {
   border-color: rgba(74, 158, 255, 0.55);

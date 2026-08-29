@@ -4,7 +4,7 @@ import { mergeMap, toArray } from 'rxjs/operators';
 import { AlpacaService } from './alpaca.service';
 import { FinnhubService } from './finnhub.service';
 import { WatchlistService } from './watchlist.service';
-import { AlpacaBar } from '../models/alpaca.models';
+import { AlpacaBar, AlpacaSnapshotsResponse } from '../models/alpaca.models';
 import { FinnhubMetrics, FinnhubEarningsSurprise } from '../models/finnhub.models';
 import { SECTOR_SYMBOLS } from '../data/sector-symbols';
 
@@ -59,6 +59,10 @@ const CHEAP_PEGY = 1;
 /** Tickers on this list are already owned and are never recommended. */
 const HOLDINGS_LIST = 'Current Holdings';
 
+function pctToMa200(price: number, ma200: number): number {
+  return (price - ma200) / ma200 * 100;
+}
+
 @Injectable({ providedIn: 'root' })
 export class StockPickerService {
   private alpaca = inject(AlpacaService);
@@ -83,8 +87,11 @@ export class StockPickerService {
     const barsBySymbol = await this.#fetchDailyBars(universe);
 
     const candidates = this.#technicalCandidates(universe, barsBySymbol, sectorOf);
-    const survivors = candidates
-      .sort((a, b) => b.technicalScore - a.technicalScore || a.pctBelow() - b.pctBelow())
+    const belowMa = await this.#dropAboveMa200(candidates);
+    const survivors = belowMa
+      .sort((a, b) =>
+        b.technicalScore - a.technicalScore
+        || pctToMa200(a.price, a.ma200) - pctToMa200(b.price, b.ma200))
       .slice(0, STAGE2_CAP);
 
     if (!survivors.length) return [];
@@ -127,8 +134,8 @@ export class StockPickerService {
     universe: string[],
     barsBySymbol: Record<string, AlpacaBar[]>,
     sectorOf: Map<string, string>,
-  ): (TechnicalCandidate & { pctBelow: () => number })[] {
-    const out: (TechnicalCandidate & { pctBelow: () => number })[] = [];
+  ): TechnicalCandidate[] {
+    const out: TechnicalCandidate[] = [];
     for (const symbol of universe) {
       const bars = (barsBySymbol[symbol] ?? []).slice().sort((a, b) => a.t.localeCompare(b.t));
       if (bars.length < 200) continue;
@@ -163,14 +170,42 @@ export class StockPickerService {
         greenCandles,
         volumeSurge,
         technicalScore,
-        pctBelow: () => (price - ma200) / ma200 * 100,
       });
     }
     return out;
   }
 
+  /**
+   * Daily bars can lag the tape, so re-check each candidate against a live snapshot: the latest
+   * trade AND today's close must both still sit below the 200-day MA. Candidates keep the live
+   * price so the reported `pctToMa200` matches what the chart shows.
+   */
+  async #dropAboveMa200(candidates: TechnicalCandidate[]): Promise<TechnicalCandidate[]> {
+    if (!candidates.length) return [];
+    const snapshots = await this.#fetchSnapshots(candidates.map(c => c.symbol));
+    const out: TechnicalCandidate[] = [];
+    for (const c of candidates) {
+      const snap = snapshots[c.symbol];
+      const prices = [snap?.latestTrade?.p, snap?.dailyBar?.c].filter(
+        (p): p is number => typeof p === 'number' && p > 0,
+      );
+      if (prices.some(p => p >= c.ma200)) continue;
+      out.push(prices.length ? { ...c, price: prices[0] } : c);
+    }
+    return out;
+  }
+
+  async #fetchSnapshots(symbols: string[]): Promise<AlpacaSnapshotsResponse> {
+    const merged: AlpacaSnapshotsResponse = {};
+    for (let i = 0; i < symbols.length; i += 100) {
+      const res = await firstValueFrom(this.alpaca.getSnapshots(symbols.slice(i, i + 100)));
+      Object.assign(merged, res?.body ?? {});
+    }
+    return merged;
+  }
+
   /** Fundamental enrichment on survivors (Finnhub, concurrency-limited, 12h-cached in the service). */
-  async #enrich(survivors: (TechnicalCandidate & { pctBelow: () => number })[]): Promise<StockPick[]> {
+  async #enrich(survivors: TechnicalCandidate[]): Promise<StockPick[]> {
     return firstValueFrom(
       from(survivors).pipe(
         mergeMap(async (c) => {
@@ -186,7 +221,7 @@ export class StockPickerService {
   }
 
   #scorePick(
-    c: TechnicalCandidate & { pctBelow: () => number },
+    c: TechnicalCandidate,
     metrics: FinnhubMetrics | null,
     surprises: FinnhubEarningsSurprise[] | null,
   ): StockPick {
@@ -246,7 +281,7 @@ export class StockPickerService {
       sector: c.sector,
       price: c.price,
       ma200: c.ma200,
-      pctToMa200: +c.pctBelow().toFixed(2),
+      pctToMa200: +pctToMa200(c.price, c.ma200).toFixed(2),
       score,
       criteria,
       metrics,

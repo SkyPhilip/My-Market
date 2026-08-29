@@ -131,31 +131,18 @@
       color: #fff;
       border-color: #4a9eff;
     }
-    .range-btn.ma20-btn {
-      border-color: rgba(77, 208, 225, 0.55);
-      color: #4dd0e1;
+    .range-btn.ma-btn {
+      border-color: color-mix(in srgb, var(--ma-color) 55%, transparent);
+      color: var(--ma-color);
     }
-    .range-btn.ma20-btn:hover {
-      border-color: #4dd0e1;
-      color: #7fe0ec;
+    .range-btn.ma-btn:hover {
+      border-color: var(--ma-color);
+      color: color-mix(in srgb, var(--ma-color) 80%, #fff);
     }
-    .range-btn.ma20-btn.active {
-      background: #4dd0e1;
-      border-color: #4dd0e1;
+    .range-btn.ma-btn.active {
+      background: var(--ma-color);
+      border-color: var(--ma-color);
       color: #1a1a2e;
-    }
-    .range-btn.ma200-btn {
-      border-color: rgba(236, 64, 122, 0.6);
-      color: #ec407a;
-    }
-    .range-btn.ma200-btn:hover {
-      border-color: #ec407a;
-      color: #f36f9c;
-    }
-    .range-btn.ma200-btn.active {
-      background: #ec407a;
-      border-color: #ec407a;
-      color: #fff;
     }
     .holdings-toggle {
       margin-top: 12px;

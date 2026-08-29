@@ -268,20 +268,16 @@
                           (click)="selectRange(row.lotId, range)"
                         >{{ range }}</button>
                       }
-                      <button
-                        type="button"
-                        class="range-btn ma20-btn"
-                        [class.active]="row.showMovingAverage20"
-                        (click)="toggleMovingAverage20(row.lotId)"
-                        title="Show or hide the 20-period moving average (window scales with the selected timeframe)"
-                      >20MA</button>
-                      <button
-                        type="button"
-                        class="range-btn ma200-btn"
-                        [class.active]="row.showMovingAverage200"
-                        (click)="toggleMovingAverage200(row.lotId)"
-                        title="Show or hide the 200-period moving average (window scales with the selected timeframe)"
-                      >200MA</button>
+                      @for (period of appSettingsService.movingAveragePeriods(); track period) {
+                        <button
+                          type="button"
+                          class="range-btn ma-btn"
+                          [style.--ma-color]="maColor(period)"
+                          [class.active]="row.visibleMas.has(period)"
+                          (click)="toggleMa(row.lotId, period)"
+                          [title]="'Show or hide the ' + period + '-day simple moving average'"
+                        >{{ period }}MA</button>
+                      }
                       @if (isCurrentHoldings() && row.costBasis !== null) {
                         <button
                           type="button"
@@ -490,14 +486,7 @@
                       [color]="'#4a9eff'"
                       [candleData]="row.candleData"
                       [showCandles]="row.range === '1D' || row.range === '5D' || row.range === '1M'"
-                      [maData]="row.maData"
-                      [showMovingAverage]="row.showMovingAverage"
-                      [ma20Data]="row.ma20Data"
-                      [showMovingAverage20]="row.showMovingAverage20"
-                      [ma150Data]="row.ma150Data"
-                      [showMovingAverage150]="row.showMovingAverage150"
-                      [ma200Data]="row.ma200Data"
-                      [showMovingAverage200]="row.showMovingAverage200"
+                      [maSeries]="maSeriesFor(row)"
                       [volumeData]="row.volumeData"
                       [volumeProfileData]="row.volumeProfileData"
                       [showRangeLines]="row.showRangeLevels && (row.range === '5D' || row.range === '1D')"

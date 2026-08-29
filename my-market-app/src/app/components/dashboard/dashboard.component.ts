@@ -9,6 +9,8 @@ import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaBarsResponse, AlpacaErrorBody, AlpacaSnapshot, AlpacaSnapshotsResponse } from '../../models/alpaca.models';
 import { LineData, HistogramData, Time } from 'lightweight-charts';
 import { firstValueFrom } from 'rxjs';
+import { AppSettingsService } from '../../services/app-settings.service';
+import { maColor } from '../../utils/moving-averages';
 
 type TimeRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'All';
 
@@ -84,6 +86,11 @@ function buildRangeLevels(bars: Array<{ t: string; h: number; l: number }>): Ran
   return { rangeHigh, rangeLow, swingHigh, swingLow };
 }
 
+/** ET (America/New_York) calendar date (YYYY-MM-DD) for an ISO bar timestamp. */
+function etSessionDate(t: string): string {
+  return new Date(t).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+
 const RANGE_CONFIGS: Record<TimeRange, RangeConfig> = {
   '1D':  { timeframe: '5Min',   getStart: () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) },
   '5D':  { timeframe: '15Min',  getStart: () => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; } },
@@ -111,8 +118,7 @@ interface IndexCard {
   change: number | null;
   changePercent: number | null;
   chartData: LineData<Time>[];
-  ma20Data: LineData<Time>[];
-  ma200Data: LineData<Time>[];
+  maData: Partial<Record<number, LineData<Time>[]>>;
   volumeData: HistogramData<Time>[];
   volumeProfileData: VolumeProfileBin[];
   rangeHigh: number | null;
@@ -132,6 +138,7 @@ interface IndexCard {
 export class DashboardComponent implements OnInit, OnDestroy {
   private alpacaService = inject(AlpacaService);
   private watchlistService = inject(WatchlistService);
+  readonly appSettingsService = inject(AppSettingsService);
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
   private refreshWasOpen = false;
   private static readonly REFRESH_MS = 15 * 60 * 1000;
@@ -139,9 +146,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private static readonly SYMBOLS = ['DIA', 'SPY', 'QQQ'] as const;
   private static readonly HOLDINGS_LIST = 'Current Holdings';
   private static readonly CARD_DEFAULTS: IndexCard[] = [
-    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], ma20Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#4a9eff' },
-    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], ma20Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#28a745' },
-    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], ma20Data: [], ma200Data: [], volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#ffc107' },
+    { symbol: 'DIA', name: 'Dow Jones', currentPrice: null, change: null, changePercent: null, chartData: [], maData: {}, volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#4a9eff' },
+    { symbol: 'SPY', name: 'S&P 500', currentPrice: null, change: null, changePercent: null, chartData: [], maData: {}, volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#28a745' },
+    { symbol: 'QQQ', name: 'Nasdaq', currentPrice: null, change: null, changePercent: null, chartData: [], maData: {}, volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, color: '#ffc107' },
   ];
 
   // Top 6 constituents per index ETF (symbol + company name), roughly by weight.
@@ -180,8 +187,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   readonly timeRanges: TimeRange[] = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'All'];
   readonly selectedRange = signal<TimeRange>('1D');
-  readonly showMovingAverage20 = signal(false);
-  readonly showMovingAverage200 = signal(true);
+  readonly visibleMas = signal<Set<number>>(new Set([200]));
   readonly showRangeLevels = signal(false);
 
   fetchSummary = fetchFnWithState<AlpacaSnapshotsResponse, AlpacaErrorBody>(() =>
@@ -240,12 +246,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.showRangeLevels.set(!this.showRangeLevels());
   }
 
-  toggleMovingAverage20(): void {
-    this.showMovingAverage20.set(!this.showMovingAverage20());
+  toggleMa(period: number): void {
+    this.visibleMas.update(s => {
+      const next = new Set(s);
+      if (next.has(period)) next.delete(period); else next.add(period);
+      return next;
+    });
   }
 
-  toggleMovingAverage200(): void {
-    this.showMovingAverage200.set(!this.showMovingAverage200());
+  maColor(period: number): string {
+    return maColor(period);
+  }
+
+  maSeriesFor(card: IndexCard): { period: number; data: LineData<Time>[] }[] {
+    return [...this.visibleMas()]
+      .map(period => ({ period, data: card.maData[period] ?? [] }))
+      .filter(m => m.data.length > 0);
   }
 
   addToWatchList(symbol: string): void {
@@ -362,6 +378,25 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** True N-trading-day SMAs (per `periods`) from daily closes, one value PER SESSION DATE (so a
+   *  multi-day intraday chart shows the real day-to-day drift instead of one static number). */
+  private async computeDailyMovingAverages(symbol: string, periods: number[]): Promise<Map<string, Partial<Record<number, number>>>> {
+    const byDate = new Map<string, Partial<Record<number, number>>>();
+    const start = new Date(Date.now() - 400 * 86_400_000).toISOString().split('T')[0];
+    const result = await firstValueFrom(this.alpacaService.getBars(symbol, '1Day', start));
+    const bars = result?.body?.bars ?? [];
+    if (!bars.length) return byDate;
+    const closes = bars.map(b => b.c);
+    for (let i = 0; i < bars.length; i++) {
+      const entry: Partial<Record<number, number>> = {};
+      for (const period of periods) {
+        if (i + 1 >= period) entry[period] = +(closes.slice(i + 1 - period, i + 1).reduce((s, c) => s + c, 0) / period).toFixed(2);
+      }
+      byDate.set(etSessionDate(bars[i].t), entry);
+    }
+    return byDate;
+  }
+
   private async loadCharts(): Promise<void> {
     const range = this.selectedRange();
     const isIntraday = range === '1D' || range === '5D' || range === '1M';
@@ -385,40 +420,51 @@ export class DashboardComponent implements OnInit, OnDestroy {
             };
           }
         });
+        // Moving averages must represent true N-TRADING-DAY SMAs everywhere so they match standard
+        // usage (and the Stock Picker's 200-day gate). On intraday ranges the loaded bars are
+        // minutes/hours, not days, so those MAs come from a separate daily-bar fetch looked up
+        // PER SESSION DATE (stepping day-to-day, not a single flat value). Only the periods enabled
+        // in Settings are computed.
+        const periods = this.appSettingsService.movingAveragePeriods();
+        const maData: Partial<Record<number, LineData<Time>[]>> = {};
+        for (const period of periods) maData[period] = [];
+        if (isIntraday) {
+          const byDate = await this.computeDailyMovingAverages(card.symbol, periods);
+          if (byDate.size) {
+            const dates = [...byDate.keys()].sort();
+            for (let i = 0; i < rawBars.length; i++) {
+              const d = etSessionDate(rawBars[i].t);
+              const mas = byDate.get(d) ?? byDate.get([...dates].reverse().find(x => x <= d) ?? dates[0]);
+              const time = chartData[i].time;
+              for (const period of periods) {
+                const v = mas?.[period];
+                if (v != null) maData[period]!.push({ time, value: v });
+              }
+            }
+          }
+        } else if (chartData.length > 0) {
+          for (const period of periods) {
+            const arr: LineData<Time>[] = [];
+            let sum = 0;
+            for (let i = 0; i < chartData.length; i++) {
+              sum += chartData[i].value;
+              if (i >= period) {
+                sum -= chartData[i - period].value;
+                arr.push({ time: chartData[i].time, value: +(sum / period).toFixed(2) });
+              } else {
+                arr.push({ time: chartData[i].time, value: +(sum / (i + 1)).toFixed(2) });
+              }
+            }
+            maData[period] = arr;
+          }
+        }
         this.indices.update(cards => cards.map(c => {
           if (c.symbol !== card.symbol) return c;
           const updates: Partial<IndexCard> = { chartData };
           if (c.currentPrice === null && rawBars.length > 0) {
             updates.currentPrice = rawBars[rawBars.length - 1].c;
           }
-          // Moving averages (cumulative until enough bars exist).
-          const ma20Data: LineData<Time>[] = [];
-          const ma200Data: LineData<Time>[] = [];
-          const period20 = 20;
-          const period200 = 200;
-          if (chartData.length > 0) {
-            let sum20 = 0;
-            let sum200 = 0;
-            for (let i = 0; i < chartData.length; i++) {
-              sum20 += chartData[i].value;
-              sum200 += chartData[i].value;
-              if (i >= period20) {
-                sum20 -= chartData[i - period20].value;
-                ma20Data.push({ time: chartData[i].time, value: +(sum20 / period20).toFixed(2) });
-              } else {
-                ma20Data.push({ time: chartData[i].time, value: +(sum20 / (i + 1)).toFixed(2) });
-              }
-
-              if (i >= period200) {
-                sum200 -= chartData[i - period200].value;
-                ma200Data.push({ time: chartData[i].time, value: +(sum200 / period200).toFixed(2) });
-              } else {
-                ma200Data.push({ time: chartData[i].time, value: +(sum200 / (i + 1)).toFixed(2) });
-              }
-            }
-          }
-          updates.ma20Data = ma20Data;
-          updates.ma200Data = ma200Data;
+          updates.maData = maData;
           // Build volume data from bars, colored by candle direction (close vs open).
           const volumeData: HistogramData<Time>[] = rawBars.map((bar, i) => ({
             time: chartData[i].time,
@@ -439,3 +485,4 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 }
+
