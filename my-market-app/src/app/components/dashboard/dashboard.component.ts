@@ -348,7 +348,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         const changePercent = change !== null && prevClose ? +((change / prevClose) * 100).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
         return { symbol: h.symbol, name: h.name, price, change, changePercent, volume };
-      });
+      }).sort((first, second) => (second.change ?? -Infinity) - (first.change ?? -Infinity));
       this.holdingsData.update(data => ({ ...data, [symbol]: rows }));
     } catch {
       // Holdings data is supplementary; leave the table empty on failure.
