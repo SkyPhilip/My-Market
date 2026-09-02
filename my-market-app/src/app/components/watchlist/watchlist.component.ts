@@ -621,7 +621,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, maData: {}, visibleMas: new Set([200]), volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: lot.addedAt, platform: lot.platform, note: lot.note, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
+        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, maData: {}, visibleMas: new Set(), volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: lot.addedAt, platform: lot.platform, note: lot.note, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -650,7 +650,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     const gainLoss = price !== null && costBasis !== null ? +(price - costBasis).toFixed(2) : null;
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
-    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, maData: {}, visibleMas: new Set([200]), volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: null, platform: null, note: null, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
+    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, maData: {}, visibleMas: new Set(), volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: null, platform: null, note: null, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -797,7 +797,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         candleData: [],
         chartLoading: false,
         maData: {},
-        visibleMas: new Set([200]),
+        visibleMas: new Set(),
         volumeData: [],
         volumeProfileData: [],
         rangeHigh: null,

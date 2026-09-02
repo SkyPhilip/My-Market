@@ -187,7 +187,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   readonly timeRanges: TimeRange[] = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'All'];
   readonly selectedRange = signal<TimeRange>('1D');
-  readonly visibleMas = signal<Set<number>>(new Set([200]));
+  readonly visibleMas = signal<Set<number>>(new Set());
   readonly showRangeLevels = signal(false);
 
   fetchSummary = fetchFnWithState<AlpacaSnapshotsResponse, AlpacaErrorBody>(() =>
