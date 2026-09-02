@@ -50,24 +50,6 @@ h2 {
   flex-wrap: wrap;
   gap: 8px;
 }
-.io-buttons {
-  display: flex;
-  gap: 6px;
-}
-.io-btn {
-  background: #1a2744;
-  color: #8892b0;
-  border: 1px solid #2a3a5e;
-}
-.io-btn:hover {
-  color: #e0e0e0;
-  border-color: #4a9eff;
-}
-.import-label {
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-}
 .watchlist-input {
   background: #0f1a30;
   border: 1px solid #2a3a5e;
@@ -567,6 +549,18 @@ h2 {
   background: #0f1a30;
   font-size: 14px;
 }
+.gain-loss-summary-row td {
+  padding: 8px 16px 12px;
+  background: #0f1a30;
+}
+.gain-loss-summary {
+  display: flex;
+  gap: 20px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.gain-loss-summary__item.positive { color: #28a745; }
+.gain-loss-summary__item.negative { color: #dc3545; }
 .ts-modal-backdrop {
   position: fixed;
   inset: 0;

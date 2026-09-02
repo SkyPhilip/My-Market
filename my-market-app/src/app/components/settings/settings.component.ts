@@ -2,9 +2,13 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AlpacaService } from '../../services/alpaca.service';
 import { AppSettingsService } from '../../services/app-settings.service';
+import { NotificationService } from '../../services/notification.service';
 import { fetchFnWithState } from '../../utils/fetch-rx';
 import { AlpacaAccount, AlpacaErrorBody } from '../../models/alpaca.models';
 import { firstValueFrom } from 'rxjs';
+
+/** Fixed set of named watchlists the app persists (no user-created lists). */
+const WATCHLIST_NAMES = ['Current Holdings', 'Watch List', 'Recommended Picks'];
 
 @Component({
   selector: 'app-settings',
@@ -15,6 +19,7 @@ import { firstValueFrom } from 'rxjs';
 })
 export class SettingsComponent implements OnInit {
   private alpacaService = inject(AlpacaService);
+  private notificationService = inject(NotificationService);
   readonly appSettings = inject(AppSettingsService);
   readonly settingBounds = AppSettingsService.BOUNDS;
   readonly maPeriods = AppSettingsService.MA_PERIODS;
@@ -68,6 +73,57 @@ export class SettingsComponent implements OnInit {
 
   toggleMaPeriod(period: number): void {
     this.appSettings.toggleMovingAveragePeriod(period);
+  }
+
+  /** Bundles EVERY localStorage key the app persists (all watchlists, trailing stops per list,
+   *  the History log, and App Settings) into one downloadable JSON file. */
+  exportAllData(): void {
+    const data: Record<string, unknown> = { exportedAt: new Date().toISOString() };
+    for (const name of WATCHLIST_NAMES) {
+      const raw = localStorage.getItem(`watchlist_${name}`);
+      if (raw) data[`watchlist_${name}`] = JSON.parse(raw);
+      const stops = localStorage.getItem(`trailing_stops_${name}`);
+      if (stops) data[`trailing_stops_${name}`] = JSON.parse(stops);
+    }
+    const history = localStorage.getItem('holdings_history');
+    if (history) data['holdings_history'] = JSON.parse(history);
+    const settings = localStorage.getItem('app_settings');
+    if (settings) data['app_settings'] = JSON.parse(settings);
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `my-market-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /** Restores every key written by {@link exportAllData}, then reloads so all root services
+   *  (which read localStorage only in their constructors) pick up the restored state. */
+  async importAllData(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text) as Record<string, unknown>;
+      let restored = 0;
+      for (const [key, value] of Object.entries(data)) {
+        if (key === 'exportedAt') continue;
+        localStorage.setItem(key, JSON.stringify(value));
+        restored++;
+      }
+      if (!restored) {
+        this.notificationService.showError('That file has no recognizable backup data.');
+      } else {
+        this.notificationService.showSuccess(`Restored ${restored} item(s). Reloading…`);
+        setTimeout(() => window.location.reload(), 800);
+      }
+    } catch {
+      this.notificationService.showError('Could not read that backup file.');
+    }
+    input.value = '';
   }
 
   private async loadHolidays(): Promise<void> {

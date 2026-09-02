@@ -277,6 +277,14 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     return this.portfolioMarketValue() - this.portfolioTotalCost();
   });
 
+  portfolioTotalGains = computed(() => {
+    return this.watchlistRows().reduce((sum, row) => sum + Math.max(row.totalGainLoss ?? 0, 0), 0);
+  });
+
+  portfolioTotalLosses = computed(() => {
+    return this.watchlistRows().reduce((sum, row) => sum + Math.min(row.totalGainLoss ?? 0, 0), 0);
+  });
+
   portfolioTotalGainLossPercent = computed(() => {
     const cost = this.portfolioTotalCost();
     return cost ? +((this.portfolioTotalGainLoss() / cost) * 100).toFixed(2) : 0;
@@ -693,9 +701,11 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
     const requiresHoldingInputs = this.isCurrentHoldings();
     const parsedShares = Number(this.newShares);
-    const parsedCostBasis = Number(this.newCostBasis);
-    const shares = requiresHoldingInputs ? parsedShares : null;
-    const costBasis = requiresHoldingInputs ? parsedCostBasis : null;
+    const parsedCost = Number(this.newCostBasis);
+    const shares = requiresHoldingInputs ? +parsedShares.toFixed(4) : null;
+    const costBasis = requiresHoldingInputs
+      ? parsedCost / shares!
+      : null;
     if (requiresHoldingInputs) {
       if (!Number.isFinite(parsedShares) || parsedShares <= 0) {
         const msg = 'Enter a valid share quantity greater than 0.';
@@ -703,8 +713,8 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         this.notificationService.showError(msg);
         return;
       }
-      if (!Number.isFinite(parsedCostBasis) || parsedCostBasis <= 0) {
-        const msg = 'Enter a valid cost per share greater than 0.';
+      if (!Number.isFinite(parsedCost) || parsedCost <= 0) {
+        const msg = 'Enter a valid total cost basis greater than 0.';
         this.addError.set(msg);
         this.notificationService.showError(msg);
         return;
@@ -713,7 +723,9 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
     if (requiresHoldingInputs) {
       // Holdings may hold the same ticker across multiple lots; reject only an exact cost/share duplicate.
-      const normalizedCostBasis = costBasis !== null ? +costBasis.toFixed(2) : null;
+      const normalizedCostBasis = costBasis !== null
+        ? costBasis
+        : null;
       const duplicateLot = this.watchlistRows().some(r => r.symbol === symbol && r.costBasis === normalizedCostBasis);
       if (duplicateLot) {
         const msg = `${symbol} at $${normalizedCostBasis?.toFixed(2)}/share is already a lot \u2014 use a different cost/share.`;
@@ -749,10 +761,11 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       const sector = this.fmpService.getCachedSector(symbol) ?? '\u2014';
       const name = this.fmpService.getCachedCompanyName(symbol) ?? symbol;
       const volume = snap?.dailyBar?.v ?? null;
-      const normalizedCostBasis = costBasis !== null ? +costBasis.toFixed(2) : null;
-      const normalizedShares = shares !== null ? +shares.toFixed(4) : null;
-      const totalCost = normalizedCostBasis !== null && normalizedShares !== null ? +(normalizedCostBasis * normalizedShares).toFixed(2) : null;
-      const marketValue = price !== null && normalizedShares !== null ? +(price * normalizedShares).toFixed(2) : null;
+      const normalizedCostBasis = costBasis !== null
+        ? costBasis
+        : null;
+      const totalCost = normalizedCostBasis !== null && shares !== null ? +(normalizedCostBasis * shares).toFixed(2) : null;
+      const marketValue = price !== null && shares !== null ? +(price * shares).toFixed(2) : null;
       const gainLoss = price !== null && normalizedCostBasis !== null ? +(price - normalizedCostBasis).toFixed(2) : null;
       const gainLossPercent = gainLoss !== null && normalizedCostBasis !== null
         ? +((gainLoss / normalizedCostBasis) * 100).toFixed(2)
@@ -774,7 +787,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         dividendYield: this.#dividendYield(symbol, price),
         volume,
         costBasis: normalizedCostBasis,
-        shares: normalizedShares,
+        shares,
         totalCost,
         marketValue,
         gainLoss,
@@ -859,33 +872,6 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       this.symbols.update(s => s.filter(sym => sym !== symbol));
     }
     this.saveToStorage();
-  }
-
-  exportWatchlist(): void {
-    const data = { [this.watchlistName()]: this.buildEntries() };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${this.watchlistName().replace(/\s+/g, '_')}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  async importWatchlist(event: Event): Promise<void> {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const data = JSON.parse(text);
-      const entries: WatchlistEntry[] = data[this.watchlistName()] ?? Object.values(data)[0] ?? [];
-      localStorage.setItem(this.storageKey, JSON.stringify(entries));
-      await this.loadWatchlist();
-    } catch {
-      // invalid file
-    }
-    input.value = '';
   }
 
   isExpanded(lotId: string): boolean {

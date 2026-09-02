@@ -104,6 +104,10 @@
     .retry-btn:hover {
       background: #3a8eef;
     }
+    .retry-btn.import-label {
+      display: inline-flex;
+      align-items: center;
+    }
     .loading {
       color: #8892b0;
     }

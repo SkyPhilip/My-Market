@@ -31,7 +31,7 @@
           type="number"
           [(ngModel)]="newCostBasis"
           name="costBasis"
-          placeholder="Cost/Share"
+          placeholder="Total Cost Basis"
           class="watchlist-input holding-input"
           min="0"
           step="0.01"
@@ -52,13 +52,6 @@
       <button type="submit" class="watchlist-btn add-btn" [disabled]="!canSubmitSymbol() || adding()">Add</button>
     </form>
     }
-    <div class="io-buttons">
-      <button class="watchlist-btn io-btn" (click)="exportWatchlist()">Export</button>
-      <label class="watchlist-btn io-btn import-label">
-        Import
-        <input type="file" accept=".json" (change)="importWatchlist($event)" hidden />
-      </label>
-    </div>
   </div>
   @if (addError()) {
     <p class="add-error">{{ addError() }}</p>
@@ -536,6 +529,14 @@
             </td>
             <td></td>
             <td></td>
+          </tr>
+          <tr class="gain-loss-summary-row">
+            <td colspan="19">
+              <div class="gain-loss-summary">
+                <span class="gain-loss-summary__item positive">Total Gains: +${{ portfolioTotalGains() | number:'1.2-2' }}</span>
+                <span class="gain-loss-summary__item negative">Total Losses: -${{ -portfolioTotalLosses() | number:'1.2-2' }}</span>
+              </div>
+            </td>
           </tr>
         </tfoot>
       }

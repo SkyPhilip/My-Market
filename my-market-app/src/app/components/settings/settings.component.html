@@ -121,6 +121,29 @@
         </div>
       </div>
 
+      <h2 class="section-title">Backup &amp; Restore</h2>
+      <div class="settings-grid">
+        <div class="settings-column">
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="label">Back up all data</span>
+              <span class="hint">Downloads Current Holdings, Watch List, Recommended Picks, trailing stops, History, and these App Settings as one JSON file. This is the only copy of your data — everything lives in this browser's storage.</span>
+            </div>
+            <button class="retry-btn" (click)="exportAllData()">Export</button>
+          </div>
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="label">Restore from backup</span>
+              <span class="hint">Overwrites current data with the contents of a backup file, then reloads.</span>
+            </div>
+            <label class="retry-btn import-label">
+              Import
+              <input type="file" accept=".json" (change)="importAllData($event)" hidden />
+            </label>
+          </div>
+        </div>
+      </div>
+
       <h2 class="section-title">Market Holidays ({{ holidayYear() }})</h2>
       @if (holidaysLoading()) {
         <p class="loading">Loading market holidays...</p>
