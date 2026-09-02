@@ -196,7 +196,9 @@
             <td class="price">{{ row.dividendYield !== null ? ((row.dividendYield | number:'1.2-2') + '%') : '—' }}</td>
             @if (hasCostBasis()) {
               <td class="price">{{ row.totalCost !== null ? ('$' + (row.totalCost | number:'1.2-2')) : '—' }}</td>
-              <td class="price">{{ row.marketValue !== null ? ('$' + (row.marketValue | number:'1.2-2')) : '—' }}</td>
+              <td class="price" [class.positive]="(row.totalGainLoss ?? 0) >= 0" [class.negative]="(row.totalGainLoss ?? 0) < 0">
+                {{ row.marketValue !== null ? ('$' + (row.marketValue | number:'1.2-2')) : '—' }}
+              </td>
               <td class="change" [class.positive]="(row.gainLoss ?? 0) >= 0" [class.negative]="(row.gainLoss ?? 0) < 0">
                 {{ row.gainLoss !== null ? ((row.gainLoss >= 0 ? '+' : '') + (row.gainLoss | number:'1.2-2')) : '—' }}
               </td>
@@ -518,14 +520,14 @@
         <tfoot>
           <tr class="summary-row">
             <td colspan="11">Portfolio Totals</td>
-            <td class="price">{{'$'}}{{ portfolioTotalCost() | number:'1.2-2' }}</td>
-            <td class="price">{{'$'}}{{ portfolioMarketValue() | number:'1.2-2' }}</td>
+            <td class="price"><span class="summary-label">Total Cost</span>{{'$'}}{{ portfolioTotalCost() | number:'1.2-2' }}</td>
+            <td class="price" [class.positive]="portfolioTotalGainLoss() >= 0" [class.negative]="portfolioTotalGainLoss() < 0"><span class="summary-label">Market Value</span>{{'$'}}{{ portfolioMarketValue() | number:'1.2-2' }}</td>
             <td></td>
             <td class="change" [class.positive]="portfolioTotalGainLossPercent() >= 0" [class.negative]="portfolioTotalGainLossPercent() < 0">
-              {{ portfolioTotalGainLossPercent() >= 0 ? '+' : '' }}{{ portfolioTotalGainLossPercent() | number:'1.2-2' }}%
+              <span class="summary-label">Total G/L %</span>{{ portfolioTotalGainLossPercent() >= 0 ? '+' : '' }}{{ portfolioTotalGainLossPercent() | number:'1.2-2' }}%
             </td>
             <td class="change" [class.positive]="portfolioTotalGainLoss() >= 0" [class.negative]="portfolioTotalGainLoss() < 0">
-              {{ portfolioTotalGainLoss() >= 0 ? '+$' : '-$' }}{{ (portfolioTotalGainLoss() >= 0 ? portfolioTotalGainLoss() : -portfolioTotalGainLoss()) | number:'1.2-2' }}
+              <span class="summary-label">Net Total G/L</span>{{ portfolioTotalGainLoss() >= 0 ? '+$' : '-$' }}{{ (portfolioTotalGainLoss() >= 0 ? portfolioTotalGainLoss() : -portfolioTotalGainLoss()) | number:'1.2-2' }}
             </td>
             <td></td>
             <td></td>
