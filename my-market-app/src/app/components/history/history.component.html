@@ -34,30 +34,7 @@
         @for (row of rows(); track trackById($index, row)) {
           <tr>
             <td class="symbol">
-              <span class="symbol-platform-picker" (click)="$event.stopPropagation()">
-                <button
-                  type="button"
-                  class="symbol-platform-trigger"
-                  [style.color]="platformColor(row.platform)"
-                  [title]="row.platform ? 'Change platform color' : 'Set platform color'"
-                  [attr.aria-label]="'Set platform for ' + row.symbol"
-                  [attr.aria-expanded]="openPlatformRecord() === row.id"
-                  (click)="togglePlatformMenu(row.id)"
-                >{{ row.symbol }} <span class="symbol-platform-caret" aria-hidden="true">▾</span></button>
-                @if (openPlatformRecord() === row.id) {
-                  <div class="symbol-platform-menu" role="group" [attr.aria-label]="'Choose platform for ' + row.symbol">
-                    <button type="button" class="symbol-platform-option" [attr.aria-pressed]="!row.platform"
-                      (click)="updatePlatform(row.id, null)">No platform</button>
-                    @for (platform of platforms; track platform.id) {
-                      <button type="button" class="symbol-platform-option" [attr.aria-pressed]="row.platform === platform.id"
-                        (click)="updatePlatform(row.id, platform.id)">
-                        <span class="symbol-platform-swatch" [style.background-color]="platform.color" aria-hidden="true"></span>
-                        {{ platform.label }}
-                      </button>
-                    }
-                  </div>
-                }
-              </span>
+              <span [style.color]="platformColor(row.platform)" [title]="platformTitle(row.platform)">{{ row.symbol }}</span>
             </td>
             <td class="name">{{ row.name }}</td>
             <td class="sector">{{ row.sector }}</td>

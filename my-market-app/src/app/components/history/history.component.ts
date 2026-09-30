@@ -1,7 +1,7 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HistoryService, HistoryRecord } from '../../services/history.service';
-import { PLATFORMS, platformById } from '../../data/platforms';
+import { platformById } from '../../data/platforms';
 
 @Component({
   selector: 'app-history',
@@ -12,8 +12,6 @@ import { PLATFORMS, platformById } from '../../data/platforms';
 })
 export class HistoryComponent {
   private historyService = inject(HistoryService);
-  readonly platforms = PLATFORMS;
-  readonly openPlatformRecord = signal<string | null>(null);
 
   /** Sold holdings, most recently sold first. */
   readonly rows = computed(() =>
@@ -37,13 +35,9 @@ export class HistoryComponent {
     return platformById(id)?.color ?? null;
   }
 
-  togglePlatformMenu(id: string): void {
-    this.openPlatformRecord.update(current => current === id ? null : id);
-  }
-
-  updatePlatform(id: string, platform: string | null): void {
-    this.historyService.updatePlatform(id, platform);
-    this.openPlatformRecord.set(null);
+  platformTitle(id: string | null | undefined): string {
+    const platform = platformById(id);
+    return platform ? `Held at ${platform.label}` : '';
   }
 
   daysHeld(row: HistoryRecord): number | null {

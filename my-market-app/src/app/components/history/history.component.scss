@@ -12,16 +12,7 @@ h2 { color: #e0e0e0; margin: 0 0 6px; font-size: 22px; }
 .hist-table td { padding: 10px 14px; color: #e0e0e0; font-size: 13px; border-bottom: 1px solid #2a3a5e; white-space: nowrap; }
 .hist-table tbody tr:hover { background: #1a2748; }
 .right { text-align: right; }
-.symbol { font-weight: 600; }
-.symbol-platform-picker { position: relative; display: inline-flex; }
-.symbol-platform-trigger { padding: 0; color: #4a9eff; background: transparent; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
-.symbol-platform-trigger:hover { text-decoration: underline; text-underline-offset: 2px; }
-.symbol-platform-caret { margin-left: 3px; color: #8892b0; font-size: 9px; }
-.symbol-platform-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 50; min-width: 140px; padding: 4px; background: #0f1a30; border: 1px solid #4a9eff; border-radius: 5px; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35); }
-.symbol-platform-option { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; color: #e0e0e0; background: transparent; border: 0; border-radius: 3px; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
-.symbol-platform-option:hover, .symbol-platform-option:focus-visible { background: #243656; }
-.symbol-platform-option[aria-pressed='true'] { background: #1b2947; }
-.symbol-platform-swatch { width: 12px; height: 12px; flex: none; border: 1px solid #5a6a8a; border-radius: 2px; }
+.symbol { font-weight: 600; color: #e0e0e0; }
 .name { color: #a0a0b0; }
 .sector { color: #8892b0; }
 .date { color: #a0a0b0; }

@@ -95,7 +95,14 @@ export class HistoryService {
     if (!raw) return [];
     try {
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      if (!Array.isArray(parsed)) return [];
+      const migrated = (parsed as HistoryRecord[]).map(record =>
+        ['ORCL', 'INTC', 'IQLT', 'HON'].includes(record.symbol?.toUpperCase() ?? '') && record.platform !== 'jpmorgan'
+          ? { ...record, platform: 'jpmorgan' }
+          : record
+      );
+      if (migrated.some((record, index) => record !== parsed[index])) this.#save(migrated);
+      return migrated;
     } catch {
       return [];
     }
