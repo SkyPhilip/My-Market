@@ -16,6 +16,19 @@ interface MoverRow {
   percentChange: number;
 }
 
+interface AverageBreakoutRow {
+  symbol: string;
+  sector: string;
+  price: number;
+  priceMultiple: number | null;
+  volumeMultiple: number | null;
+}
+
+interface AverageBreakoutGroup {
+  period: number;
+  rows: AverageBreakoutRow[];
+}
+
 interface SectorHolding {
   symbol: string;
   changePct: number | null;
@@ -50,9 +63,13 @@ interface FlowSeries {
 }
 
 const BENCHMARK = 'SPY';
-const LOOKBACK_DAYS = 92; // ~3 months
+const FLOW_HISTORY_DAYS = 92; // ~3 months
+const BREAKOUT_LOOKBACK_DAYS = 320; // enough calendar days for 200 completed sessions
 const HISTORY_KEY = 'money_flow_history';
 const MOVERS_SHOWN = 10;
+const BREAKOUTS_SHOWN = 6;
+const BREAKOUT_MULTIPLE = 2;
+const BREAKOUT_PERIODS = [20, 50, 200];
 /** First sector wins for a ticker listed under more than one. */
 const SYMBOL_SECTOR: Record<string, string> = Object.fromEntries(
   Object.entries(SECTOR_SYMBOLS).flatMap(([sector, symbols]) => symbols.map(s => [s, sector] as const)),
@@ -84,6 +101,7 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
   readonly expandedSector = signal<string | null>(null);
   readonly moversGainers = signal<MoverRow[]>([]);
   readonly moversLosers = signal<MoverRow[]>([]);
+  readonly averageBreakoutGroups = signal<AverageBreakoutGroup[]>([]);
   // Bumped after lazily fetching company names so the view re-reads the cache.
   private readonly namesVersion = signal(0);
 
@@ -133,9 +151,12 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
 
       // Historical flow-score series (Option A: backfill from daily bars) + persistence (Option B)
       const startDate = new Date();
-      startDate.setDate(startDate.getDate() - LOOKBACK_DAYS);
+      startDate.setDate(startDate.getDate() - BREAKOUT_LOOKBACK_DAYS);
       const dailyBars = await this.fetchMultiBars(allSymbols, startDate.toISOString().split('T')[0]);
-      const series = this.mergeWithStoredHistory(this.buildFlowHistory(dailyBars, flows));
+      this.buildAverageBreakouts(snaps, dailyBars, allSymbols.filter(s => s !== BENCHMARK));
+      const historyStart = new Date();
+      historyStart.setDate(historyStart.getDate() - FLOW_HISTORY_DAYS);
+      const series = this.mergeWithStoredHistory(this.buildFlowHistory(dailyBars, flows, historyStart.toISOString().split('T')[0]));
       // Order legend/series to match the table (sorted by today's flow score)
       const rank = new Map(flows.map((f, i) => [f.sector, i]));
       const ordered = [...series].sort((a, b) => (rank.get(a.sector) ?? 99) - (rank.get(b.sector) ?? 99));
@@ -172,6 +193,37 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
     this.loadMoverNames();
   }
 
+  /** Live price and today's volume relative to completed daily-session averages. */
+  private buildAverageBreakouts(snaps: Record<string, AlpacaSnapshot>, dailyBars: Record<string, AlpacaBar[]>, symbols: string[]): void {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const groups = BREAKOUT_PERIODS.map(period => ({
+      period,
+      rows: symbols.map(symbol => {
+        const snap = snaps[symbol];
+        const price = snap?.latestTrade?.p ?? snap?.minuteBar?.c ?? snap?.dailyBar?.c ?? null;
+        const volume = snap?.dailyBar?.v ?? null;
+        const priorBars = (dailyBars[symbol] ?? [])
+          .filter(bar => bar.t.split('T')[0] < today)
+          .sort((a, b) => a.t.localeCompare(b.t))
+          .slice(-period);
+        if (price === null || priorBars.length < period) return null;
+
+        const priceAverage = priorBars.reduce((sum, bar) => sum + bar.c, 0) / priorBars.length;
+        const volumeAverage = priorBars.reduce((sum, bar) => sum + bar.v, 0) / priorBars.length;
+        const priceMultiple = priceAverage > 0 ? price / priceAverage : null;
+        const volumeMultiple = volume !== null && volumeAverage > 0 ? volume / volumeAverage : null;
+        if ((priceMultiple ?? 0) <= BREAKOUT_MULTIPLE && (volumeMultiple ?? 0) <= BREAKOUT_MULTIPLE) return null;
+        return { symbol, sector: SYMBOL_SECTOR[symbol] ?? '', price, priceMultiple, volumeMultiple };
+      })
+        .filter((row): row is AverageBreakoutRow => row !== null)
+        .sort((first, second) => Math.max(second.priceMultiple ?? 0, second.volumeMultiple ?? 0) - Math.max(first.priceMultiple ?? 0, first.volumeMultiple ?? 0))
+        .slice(0, BREAKOUTS_SHOWN),
+    }));
+
+    this.averageBreakoutGroups.set(groups);
+    this.loadBreakoutNames();
+  }
+
   /** Company names for the movers panel; non-fatal and usually a cache hit. */
   private async loadMoverNames(): Promise<void> {
     const symbols = [...this.moversGainers(), ...this.moversLosers()].map(m => m.symbol);
@@ -180,6 +232,19 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
     try {
       await firstValueFrom(this.fmp.getProfiles(uncached));
       this.namesVersion.update(v => v + 1);
+    } catch {
+      // Names are non-critical; symbols remain as the fallback display.
+    }
+  }
+
+  /** Company names for the breakout panel; non-fatal and usually a cache hit. */
+  private async loadBreakoutNames(): Promise<void> {
+    const symbols = this.averageBreakoutGroups().flatMap(group => group.rows.map(row => row.symbol));
+    const uncached = symbols.filter(symbol => !this.fmp.getCachedCompanyName(symbol));
+    if (!uncached.length) return;
+    try {
+      await firstValueFrom(this.fmp.getProfiles(uncached));
+      this.namesVersion.update(version => version + 1);
     } catch {
       // Names are non-critical; symbols remain as the fallback display.
     }
@@ -304,8 +369,8 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
     return merged;
   }
 
-  private buildFlowHistory(dailyBars: Record<string, AlpacaBar[]>, todayFlows: SectorFlow[]): FlowSeries[] {
-    const spyBars = (dailyBars[BENCHMARK] ?? []).slice().sort((a, b) => a.t.localeCompare(b.t));
+  private buildFlowHistory(dailyBars: Record<string, AlpacaBar[]>, todayFlows: SectorFlow[], historyStart: string): FlowSeries[] {
+    const spyBars = (dailyBars[BENCHMARK] ?? []).filter(bar => bar.t.split('T')[0] >= historyStart).sort((a, b) => a.t.localeCompare(b.t));
     const dates = spyBars.map(b => b.t.split('T')[0]);
 
     const byDate = new Map<string, Map<string, AlpacaBar>>();

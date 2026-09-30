@@ -17,6 +17,8 @@ import { PLATFORMS, PlatformOption, platformById } from '../../data/platforms';
 import { LineData, CandlestickData, HistogramData, Time } from 'lightweight-charts';
 import { AppSettingsService } from '../../services/app-settings.service';
 import { maColor } from '../../utils/moving-averages';
+import { PortfolioGainLossService } from '../../services/portfolio-gain-loss.service';
+import { PortfolioGainLossChartComponent } from './portfolio-gain-loss-chart.component';
 
 type TimeRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'All';
 
@@ -211,7 +213,7 @@ const HOLDINGS_LIST = 'Current Holdings';
 @Component({
   selector: 'app-watchlist',
   standalone: true,
-  imports: [CommonModule, FormsModule, ChartComponent],
+  imports: [CommonModule, FormsModule, ChartComponent, PortfolioGainLossChartComponent],
   templateUrl: './watchlist.component.html',
   styleUrl: './watchlist.component.scss',
 })
@@ -228,6 +230,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   private notificationService = inject(NotificationService);
   private watchlistService = inject(WatchlistService);
   private historyService = inject(HistoryService);
+  readonly portfolioGainLossService = inject(PortfolioGainLossService);
   private stopMonitor = inject(StopMonitorService);
   readonly appSettingsService = inject(AppSettingsService);
 
@@ -568,6 +571,12 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
   private saveToStorage(): void {
     localStorage.setItem(this.storageKey, JSON.stringify(this.buildEntries()));
+    this.capturePortfolioGainLoss();
+  }
+
+  private capturePortfolioGainLoss(): void {
+    if (!this.isCurrentHoldings()) return;
+    this.portfolioGainLossService.recordSnapshot(this.portfolioTotalGains(), this.portfolioTotalLosses());
   }
 
   async loadWatchlist(): Promise<void> {
@@ -1186,6 +1195,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
       const dividendYield = this.#dividendYield(r.symbol, price);
       return { ...r, price, change, changePercent, volume, marketValue, gainLoss, gainLossPercent, totalGainLoss, dividendYield };
     }));
+    this.capturePortfolioGainLoss();
   }
 
   divergencesFor(lotId: string): DivergenceType[] {

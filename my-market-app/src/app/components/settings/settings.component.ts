@@ -75,8 +75,8 @@ export class SettingsComponent implements OnInit {
     this.appSettings.toggleMovingAveragePeriod(period);
   }
 
-  /** Bundles EVERY localStorage key the app persists (all watchlists, trailing stops per list,
-   *  the History log, and App Settings) into one downloadable JSON file. */
+  /** Bundles all user data, including watchlists, trailing stops, realized history,
+   *  unrealized portfolio chart history, and App Settings into one downloadable JSON file. */
   exportAllData(): void {
     const data: Record<string, unknown> = { exportedAt: new Date().toISOString() };
     for (const name of WATCHLIST_NAMES) {
@@ -89,6 +89,8 @@ export class SettingsComponent implements OnInit {
     if (history) data['holdings_history'] = JSON.parse(history);
     const settings = localStorage.getItem('app_settings');
     if (settings) data['app_settings'] = JSON.parse(settings);
+    const gainLossHistory = localStorage.getItem('portfolio_gain_loss_history');
+    if (gainLossHistory) data['portfolio_gain_loss_history'] = JSON.parse(gainLossHistory);
 
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

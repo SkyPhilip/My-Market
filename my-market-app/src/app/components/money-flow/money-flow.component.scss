@@ -13,6 +13,16 @@
     .mover__price { color: #a0a0b0; font-size: 12px; }
     .mover__pct { font-size: 13px; font-weight: 600; text-align: right; }
     @media (max-width: 720px) { .movers-card { grid-template-columns: 1fr; } }
+    .breakouts { margin-bottom: 20px; padding: 14px 16px; background: #16213e; border: 1px solid #2a3a5e; border-radius: 10px; }
+    .breakouts h3 { margin: 0 0 8px; color: #ffc107; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    .breakouts__rows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 16px; }
+    .breakout { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto 20px; align-items: center; gap: 9px; min-width: 0; padding: 6px 0; border-top: 1px solid #1c2a48; }
+    .breakouts__rows .breakout:nth-child(-n+3) { border-top: none; }
+    .breakout__symbol { color: #ffffff; font-size: 13px; font-weight: 600; }
+    .breakout__name, .breakout__sector { overflow: hidden; color: #8892b0; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .breakout__sector { max-width: 80px; font-size: 11px; }
+    .breakout__metric { color: #ffc107; font-size: 12px; font-weight: 600; white-space: nowrap; }
+    @media (max-width: 1000px) { .breakouts__rows { grid-template-columns: 1fr; } .breakouts__rows .breakout:nth-child(-n+3) { border-top: 1px solid #1c2a48; } .breakouts__rows .breakout:first-child { border-top: none; } }
     .as-of { color: #8892b0; font-size: 12px; margin: 0 0 12px; }
     .loading { color: #8892b0; font-size: 14px; }
     .load-btn { background: #4a9eff; color: #fff; border: none; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }

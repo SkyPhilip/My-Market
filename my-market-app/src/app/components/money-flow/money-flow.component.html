@@ -50,6 +50,37 @@
         </div>
       }
 
+      @for (group of averageBreakoutGroups(); track group.period) {
+        @if (group.rows.length) {
+          <section class="breakouts" [attr.aria-label]="group.period + '-day average breakouts'">
+            <h3>{{ group.period }}-Day Average Breakouts</h3>
+            <div class="breakouts__rows">
+              @for (row of group.rows; track row.symbol) {
+                <div class="breakout">
+                  <span class="breakout__symbol">{{ row.symbol }}</span>
+                  <span class="breakout__name" [title]="holdingName(row.symbol)">{{ holdingName(row.symbol) }}</span>
+                  <span class="breakout__sector" [title]="row.sector">{{ row.sector }}</span>
+                  @if (row.priceMultiple !== null && row.priceMultiple > 2) {
+                    <span class="breakout__metric">Price {{ row.priceMultiple | number:'1.1-2' }}x</span>
+                  }
+                  @if (row.volumeMultiple !== null && row.volumeMultiple > 2) {
+                    <span class="breakout__metric">Volume {{ row.volumeMultiple | number:'1.1-2' }}x</span>
+                  }
+                  <button
+                    type="button"
+                    class="add-watch-btn"
+                    [class.added]="inWatchList(row.symbol)"
+                    [disabled]="inWatchList(row.symbol)"
+                    (click)="addToWatchList(row.symbol)"
+                    [title]="inWatchList(row.symbol) ? 'In Watch List' : 'Add to Watch List'"
+                  >{{ inWatchList(row.symbol) ? '✓' : '+' }}</button>
+                </div>
+              }
+            </div>
+          </section>
+        }
+      }
+
       @if (loading()) { <p class="loading">Analyzing sectors…</p> }
       @if (error()) {
         <p class="loading">{{ error() }} <button class="load-btn" (click)="load()">Retry</button></p>

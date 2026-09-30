@@ -25,7 +25,7 @@ export const SECTOR_SYMBOLS: Record<string, string[]> = {
     'EBAY', 'DKNG', 'DG', 'DLTR', 'BBY', 'APTV', 'GRMN', 'PHM', 'POOL', 'TSCO'
   ],
   'Communication Services': [
-    'GOOG', 'META', 'NFLX', 'DIS', 'CMCSA', 'TMUS', 'VZ', 'T', 'CHTR', 'EA',
+    'GOOG', 'META', 'NFLX', 'DIS', 'CMCSA', 'TMUS', 'VZ', 'T', 'CHTR',
     'ATVI', 'TTWO', 'MTCH', 'WBD', 'PARA', 'LYV', 'RBLX', 'ZM', 'PINS', 'SNAP',
     'ROKU', 'SPOT', 'IACI', 'OMC', 'IPG', 'FOX', 'FOXA', 'NWSA', 'NWS', 'LUMN'
   ],
