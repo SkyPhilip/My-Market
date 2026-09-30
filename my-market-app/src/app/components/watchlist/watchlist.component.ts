@@ -498,6 +498,16 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
   /** Lots whose platform is currently being edited (inline dropdown shown). */
   editingPlatformLots = signal<Set<string>>(new Set());
+  openPlatformPicker = signal<string | null>(null);
+
+  togglePlatformPicker(id: string): void {
+    this.openPlatformPicker.update(current => current === id ? null : id);
+  }
+
+  @HostListener('document:click')
+  closePlatformPicker(): void {
+    this.openPlatformPicker.set(null);
+  }
 
   isEditingPlatform(lotId: string): boolean {
     return this.editingPlatformLots().has(lotId);
@@ -505,11 +515,13 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
   startEditPlatform(lotId: string): void {
     this.editingPlatformLots.update(s => new Set(s).add(lotId));
+    this.openPlatformPicker.set(lotId);
   }
 
   /** Assigns (or clears) a lot's platform from the inline dropdown. */
   setPlatform(row: WatchlistRow, id: string): void {
     this.patchRow(row.lotId, { platform: id || null });
+    this.openPlatformPicker.set(null);
     this.editingPlatformLots.update(s => { const next = new Set(s); next.delete(row.lotId); return next; });
     this.saveToStorage();
   }
@@ -1322,6 +1334,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
   @HostListener('document:keydown.escape')
   closeFullscreen(): void {
+    this.openPlatformPicker.set(null);
     if (this.fullscreenLot() !== null) this.fullscreenLot.set(null);
   }
 

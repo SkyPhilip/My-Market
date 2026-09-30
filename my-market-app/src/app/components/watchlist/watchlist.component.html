@@ -37,17 +37,23 @@
           step="0.01"
           [disabled]="adding()"
         />
-        <select
-          [(ngModel)]="newPlatform"
-          name="platform"
-          class="watchlist-input holding-input platform-input"
-          [disabled]="adding()"
-          title="Platform this lot is held on"
-        >
-          @for (p of platforms; track p.id) {
-            <option [value]="p.id">{{ p.label }}</option>
+        <span class="platform-picker" (click)="$event.stopPropagation()">
+          <button type="button" class="platform-trigger platform-trigger--add" [disabled]="adding()"
+            aria-label="Platform" [attr.aria-expanded]="openPlatformPicker() === 'add'"
+            (click)="togglePlatformPicker('add')">
+            {{ platformFor(newPlatform)?.label ?? 'Platform' }} <span aria-hidden="true">▾</span>
+          </button>
+          @if (openPlatformPicker() === 'add') {
+            <div class="platform-menu" role="group" aria-label="Choose platform">
+              @for (p of platforms; track p.id) {
+                <button type="button" class="platform-option" [attr.aria-pressed]="newPlatform === p.id"
+                  (click)="newPlatform = p.id; openPlatformPicker.set(null)">
+                  <span class="platform-swatch" [style.background-color]="p.color" aria-hidden="true"></span>{{ p.label }}
+                </button>
+              }
+            </div>
           }
-        </select>
+        </span>
       }
       <button type="submit" class="watchlist-btn add-btn" [disabled]="!canSubmitSymbol() || adding()">Add</button>
     </form>
@@ -106,16 +112,26 @@
             <td class="symbol">
               @if (isCurrentHoldings()) {
                 @if (isEditingPlatform(row.lotId)) {
-                  <select
-                    class="platform-select"
-                    (click)="$event.stopPropagation()"
-                    (change)="setPlatform(row, $any($event.target).value)"
-                  >
-                    <option value="" [selected]="!row.platform">—</option>
-                    @for (p of platforms; track p.id) {
-                      <option [value]="p.id" [selected]="row.platform === p.id">{{ p.label }}</option>
+                  <span class="platform-picker" (click)="$event.stopPropagation()">
+                    <button type="button" class="platform-trigger platform-trigger--inline"
+                      [attr.aria-label]="'Platform for ' + row.symbol"
+                      [attr.aria-expanded]="openPlatformPicker() === row.lotId"
+                      (click)="togglePlatformPicker(row.lotId)">
+                      {{ platformFor(row.platform)?.label ?? '—' }} <span aria-hidden="true">▾</span>
+                    </button>
+                    @if (openPlatformPicker() === row.lotId) {
+                      <div class="platform-menu" role="group" [attr.aria-label]="'Choose platform for ' + row.symbol">
+                        <button type="button" class="platform-option" [attr.aria-pressed]="!row.platform"
+                          (click)="setPlatform(row, '')">—</button>
+                      @for (p of platforms; track p.id) {
+                        <button type="button" class="platform-option" [attr.aria-pressed]="row.platform === p.id"
+                          (click)="setPlatform(row, p.id)">
+                          <span class="platform-swatch" [style.background-color]="p.color" aria-hidden="true"></span>{{ p.label }}
+                        </button>
+                      }
+                      </div>
                     }
-                  </select>
+                  </span>
                 } @else {
                   <span
                     class="symbol-text symbol-text--platform"
