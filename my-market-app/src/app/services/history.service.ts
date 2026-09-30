@@ -6,6 +6,7 @@ export interface HistoryRecord {
   symbol: string;
   name: string;
   sector: string;
+  platform?: string | null;
   shares: number | null;
   costBasis: number | null;
   totalCost: number | null;
@@ -62,6 +63,14 @@ export class HistoryService {
   updateSoldAt(id: string, soldAt: string): void {
     this.records.update(rows => {
       const next = rows.map(r => r.id === id ? { ...r, soldAt } : r);
+      this.#save(next);
+      return next;
+    });
+  }
+
+  updatePlatform(id: string, platform: string | null): void {
+    this.records.update(rows => {
+      const next = rows.map(r => r.id === id ? { ...r, platform } : r);
       this.#save(next);
       return next;
     });

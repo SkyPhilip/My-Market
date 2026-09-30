@@ -26,13 +26,39 @@
           <th class="right">Total G/L</th>
           <th>Date Bought</th>
           <th>Date Sold</th>
+          <th class="right">Days Held</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         @for (row of rows(); track trackById($index, row)) {
           <tr>
-            <td class="symbol">{{ row.symbol }}</td>
+            <td class="symbol">
+              <span class="symbol-platform-picker" (click)="$event.stopPropagation()">
+                <button
+                  type="button"
+                  class="symbol-platform-trigger"
+                  [style.color]="platformColor(row.platform)"
+                  [title]="row.platform ? 'Change platform color' : 'Set platform color'"
+                  [attr.aria-label]="'Set platform for ' + row.symbol"
+                  [attr.aria-expanded]="openPlatformRecord() === row.id"
+                  (click)="togglePlatformMenu(row.id)"
+                >{{ row.symbol }} <span class="symbol-platform-caret" aria-hidden="true">▾</span></button>
+                @if (openPlatformRecord() === row.id) {
+                  <div class="symbol-platform-menu" role="group" [attr.aria-label]="'Choose platform for ' + row.symbol">
+                    <button type="button" class="symbol-platform-option" [attr.aria-pressed]="!row.platform"
+                      (click)="updatePlatform(row.id, null)">No platform</button>
+                    @for (platform of platforms; track platform.id) {
+                      <button type="button" class="symbol-platform-option" [attr.aria-pressed]="row.platform === platform.id"
+                        (click)="updatePlatform(row.id, platform.id)">
+                        <span class="symbol-platform-swatch" [style.background-color]="platform.color" aria-hidden="true"></span>
+                        {{ platform.label }}
+                      </button>
+                    }
+                  </div>
+                }
+              </span>
+            </td>
             <td class="name">{{ row.name }}</td>
             <td class="sector">{{ row.sector }}</td>
             <td class="right">{{ row.shares !== null ? (row.shares | number:'1.0-4') : '—' }}</td>
@@ -70,6 +96,7 @@
                 title="Edit the date sold"
               />
             </td>
+            <td class="right">{{ daysHeld(row) ?? '—' }}</td>
             <td class="right">
               <button type="button" class="remove-btn" title="Delete record" (click)="remove(row.id)">✕</button>
             </td>
@@ -83,7 +110,7 @@
             {{ (totalGainLoss() >= 0 ? '+$' : '-$') + (totalGainLoss() >= 0 ? totalGainLoss() : -totalGainLoss() | number:'1.2-2') }}
             <span class="pct">({{ totalGainLossPercent() >= 0 ? '+' : '' }}{{ totalGainLossPercent() | number:'1.2-2' }}%)</span>
           </td>
-          <td colspan="3"></td>
+          <td colspan="4"></td>
         </tr>
       </tfoot>
     </table>

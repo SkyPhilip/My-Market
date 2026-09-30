@@ -1,6 +1,7 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HistoryService, HistoryRecord } from '../../services/history.service';
+import { PLATFORMS, platformById } from '../../data/platforms';
 
 @Component({
   selector: 'app-history',
@@ -11,6 +12,8 @@ import { HistoryService, HistoryRecord } from '../../services/history.service';
 })
 export class HistoryComponent {
   private historyService = inject(HistoryService);
+  readonly platforms = PLATFORMS;
+  readonly openPlatformRecord = signal<string | null>(null);
 
   /** Sold holdings, most recently sold first. */
   readonly rows = computed(() =>
@@ -29,6 +32,30 @@ export class HistoryComponent {
     const cost = this.totalCost();
     return cost ? +((this.totalGainLoss() / cost) * 100).toFixed(2) : 0;
   });
+
+  platformColor(id: string | null | undefined): string | null {
+    return platformById(id)?.color ?? null;
+  }
+
+  togglePlatformMenu(id: string): void {
+    this.openPlatformRecord.update(current => current === id ? null : id);
+  }
+
+  updatePlatform(id: string, platform: string | null): void {
+    this.historyService.updatePlatform(id, platform);
+    this.openPlatformRecord.set(null);
+  }
+
+  daysHeld(row: HistoryRecord): number | null {
+    if (!row.addedAt || !row.soldAt) return null;
+    const bought = new Date(row.addedAt);
+    const sold = new Date(row.soldAt);
+    if (!Number.isFinite(bought.getTime()) || !Number.isFinite(sold.getTime())) return null;
+    const boughtDay = Date.UTC(bought.getUTCFullYear(), bought.getUTCMonth(), bought.getUTCDate());
+    const soldDay = Date.UTC(sold.getUTCFullYear(), sold.getUTCMonth(), sold.getUTCDate());
+    const days = (soldDay - boughtDay) / 86_400_000;
+    return days >= 0 ? days : null;
+  }
 
   remove(id: string): void {
     this.historyService.removeRecord(id);

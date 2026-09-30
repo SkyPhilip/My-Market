@@ -865,6 +865,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         symbol: row.symbol,
         name: row.name,
         sector: row.sector,
+        platform: row.platform,
         shares: row.shares,
         costBasis: row.costBasis,
         totalCost: row.totalCost,
