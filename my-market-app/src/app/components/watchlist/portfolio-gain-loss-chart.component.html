@@ -1,0 +1,18 @@
+<section class="portfolio-history" aria-label="Historical portfolio gains and losses">
+  <header class="portfolio-history__header">
+    <h3>Unrealized Gains &amp; Losses</h3>
+    <nav class="portfolio-history__ranges" aria-label="Portfolio history range">
+      @for (range of ranges; track range) {
+        <button type="button" [class.active]="selectedRange() === range" (click)="selectRange(range)">{{ range }}</button>
+      }
+    </nav>
+  </header>
+  <div #chartContainer class="portfolio-history__chart"></div>
+  <div class="portfolio-history__legend" aria-hidden="true">
+    <span class="portfolio-history__legend-item portfolio-history__legend-item--gains">Total Gains</span>
+    <span class="portfolio-history__legend-item portfolio-history__legend-item--losses">Total Losses</span>
+  </div>
+  @if (rangePointCount() < 2) {
+    <p class="portfolio-history__note">Tracking started today. More points will appear as holdings refresh.</p>
+  }
+</section>

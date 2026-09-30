@@ -559,6 +559,9 @@
         </tfoot>
       }
     </table>
+    @if (isCurrentHoldings() && hasCostBasis()) {
+      <app-portfolio-gain-loss-chart [points]="portfolioGainLossService.snapshots()"></app-portfolio-gain-loss-chart>
+    }
     @if (newsPanelOpen()) {
       <aside class="news-panel" role="dialog" aria-modal="false" [attr.aria-labelledby]="newsPanelTitleId()">
         <header class="news-panel__header">
