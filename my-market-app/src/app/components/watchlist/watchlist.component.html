@@ -41,7 +41,13 @@
           <button type="button" class="platform-trigger platform-trigger--add" [disabled]="adding()"
             aria-label="Platform" [attr.aria-expanded]="openPlatformPicker() === 'add'"
             (click)="togglePlatformPicker('add')">
-            {{ platformFor(newPlatform)?.label ?? 'Platform' }} <span aria-hidden="true">▾</span>
+            <span class="platform-trigger__selection">
+              @if (platformFor(newPlatform); as selectedPlatform) {
+                <span class="platform-swatch" [style.background-color]="selectedPlatform.color" aria-hidden="true"></span>
+              }
+              {{ platformFor(newPlatform)?.label ?? 'Platform' }}
+            </span>
+            <span aria-hidden="true">▾</span>
           </button>
           @if (openPlatformPicker() === 'add') {
             <div class="platform-menu" role="group" aria-label="Choose platform">
@@ -117,7 +123,13 @@
                       [attr.aria-label]="'Platform for ' + row.symbol"
                       [attr.aria-expanded]="openPlatformPicker() === row.lotId"
                       (click)="togglePlatformPicker(row.lotId)">
-                      {{ platformFor(row.platform)?.label ?? '—' }} <span aria-hidden="true">▾</span>
+                      <span class="platform-trigger__selection">
+                        @if (platformFor(row.platform); as selectedPlatform) {
+                          <span class="platform-swatch" [style.background-color]="selectedPlatform.color" aria-hidden="true"></span>
+                        }
+                        {{ platformFor(row.platform)?.label ?? '—' }}
+                      </span>
+                      <span aria-hidden="true">▾</span>
                     </button>
                     @if (openPlatformPicker() === row.lotId) {
                       <div class="platform-menu" role="group" [attr.aria-label]="'Choose platform for ' + row.symbol">

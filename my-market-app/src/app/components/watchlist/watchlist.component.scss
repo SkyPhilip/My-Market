@@ -349,6 +349,7 @@ h2 {
   font-family: inherit;
   cursor: pointer;
 }
+.platform-trigger__selection { display: inline-flex; align-items: center; gap: 8px; }
 .platform-trigger:hover, .platform-trigger:focus-visible { border-color: #4a9eff; }
 .platform-trigger:disabled { opacity: 0.5; cursor: not-allowed; }
 .platform-trigger--add { width: 140px; padding: 8px 12px; font-size: 14px; }
