@@ -1,7 +1,7 @@
 import { Component, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HistoryService, HistoryRecord } from '../../services/history.service';
-import { platformById } from '../../data/platforms';
+import { PLATFORMS, platformById } from '../../data/platforms';
 
 @Component({
   selector: 'app-history',
@@ -29,6 +29,29 @@ export class HistoryComponent {
   readonly totalGainLossPercent = computed(() => {
     const cost = this.totalCost();
     return cost ? +((this.totalGainLoss() / cost) * 100).toFixed(2) : 0;
+  });
+
+  readonly platformGainLossTotals = computed(() => {
+    const totals = new Map<string | null, number>();
+    for (const row of this.rows()) {
+      const platformId = platformById(row.platform)?.id ?? null;
+      totals.set(platformId, (totals.get(platformId) ?? 0) + (row.totalGainLoss ?? 0));
+    }
+
+    return [
+      ...PLATFORMS.filter(platform => totals.has(platform.id)).map(platform => ({
+        id: platform.id,
+        label: platform.label,
+        color: platform.color,
+        totalGainLoss: +(totals.get(platform.id) ?? 0).toFixed(2),
+      })),
+      ...(totals.has(null) ? [{
+        id: null,
+        label: 'Unassigned',
+        color: null,
+        totalGainLoss: +(totals.get(null) ?? 0).toFixed(2),
+      }] : []),
+    ];
   });
 
   platformColor(id: string | null | undefined): string | null {

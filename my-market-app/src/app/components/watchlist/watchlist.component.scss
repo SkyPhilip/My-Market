@@ -596,6 +596,13 @@ h2 {
   background: #0f1a30;
   font-size: 14px;
 }
+.platform-total-row td {
+  padding: 7px 16px;
+  background: #0f1a30;
+  border-top: 1px solid #2a3a5e;
+  font-size: 12px;
+  font-weight: 700;
+}
 .summary-label {
   display: block;
   margin-bottom: 3px;
@@ -608,13 +615,19 @@ h2 {
   background: #0f1a30;
 }
 .gain-loss-summary {
-  display: flex;
-  gap: 20px;
+  display: grid;
+  grid-template-columns: 150px repeat(2, minmax(190px, 230px));
+  gap: 12px 20px;
+  align-items: center;
   font-size: 13px;
   font-weight: 700;
 }
+.gain-loss-summary__scope { color: #8892b0; }
 .gain-loss-summary__item.positive { color: #28a745; }
 .gain-loss-summary__item.negative { color: #dc3545; }
+@media (max-width: 640px) {
+  .gain-loss-summary { grid-template-columns: minmax(90px, 1fr) repeat(2, minmax(150px, 1fr)); gap: 8px 12px; }
+}
 .ts-modal-backdrop {
   position: fixed;
   inset: 0;

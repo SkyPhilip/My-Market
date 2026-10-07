@@ -560,9 +560,21 @@
             <td></td>
             <td></td>
           </tr>
+          @for (platform of portfolioPlatformGainLossTotals(); track platform.id ?? 'unassigned') {
+            <tr class="platform-total-row">
+              <td colspan="18">
+                <div class="gain-loss-summary">
+                  <span class="gain-loss-summary__scope" [style.color]="platform.color">{{ platform.label }}</span>
+                  <span class="gain-loss-summary__item positive">Total Gains: +${{ platform.totalGains | number:'1.2-2' }}</span>
+                  <span class="gain-loss-summary__item negative">Total Losses: -${{ -platform.totalLosses | number:'1.2-2' }}</span>
+                </div>
+              </td>
+            </tr>
+          }
           <tr class="gain-loss-summary-row">
-            <td colspan="19">
+            <td colspan="18">
               <div class="gain-loss-summary">
+                <span class="gain-loss-summary__scope">Portfolio</span>
                 <span class="gain-loss-summary__item positive">Total Gains: +${{ portfolioTotalGains() | number:'1.2-2' }}</span>
                 <span class="gain-loss-summary__item negative">Total Losses: -${{ -portfolioTotalLosses() | number:'1.2-2' }}</span>
               </div>

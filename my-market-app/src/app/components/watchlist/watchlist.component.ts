@@ -288,6 +288,34 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     return this.watchlistRows().reduce((sum, row) => sum + Math.min(row.totalGainLoss ?? 0, 0), 0);
   });
 
+  portfolioPlatformGainLossTotals = computed(() => {
+    const totals = new Map<string | null, { gains: number; losses: number }>();
+    for (const row of this.watchlistRows()) {
+      const platformId = platformById(row.platform)?.id ?? null;
+      const total = totals.get(platformId) ?? { gains: 0, losses: 0 };
+      total.gains += Math.max(row.totalGainLoss ?? 0, 0);
+      total.losses += Math.min(row.totalGainLoss ?? 0, 0);
+      totals.set(platformId, total);
+    }
+
+    return [
+      ...PLATFORMS.filter(platform => totals.has(platform.id)).map(platform => ({
+        id: platform.id,
+        label: platform.label,
+        color: platform.color,
+        totalGains: +(totals.get(platform.id)?.gains ?? 0).toFixed(2),
+        totalLosses: +(totals.get(platform.id)?.losses ?? 0).toFixed(2),
+      })),
+      ...(totals.has(null) ? [{
+        id: null,
+        label: 'Unassigned',
+        color: null,
+        totalGains: +(totals.get(null)?.gains ?? 0).toFixed(2),
+        totalLosses: +(totals.get(null)?.losses ?? 0).toFixed(2),
+      }] : []),
+    ];
+  });
+
   portfolioTotalGainLossPercent = computed(() => {
     const cost = this.portfolioTotalCost();
     return cost ? +((this.portfolioTotalGainLoss() / cost) * 100).toFixed(2) : 0;

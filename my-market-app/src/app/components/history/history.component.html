@@ -89,6 +89,15 @@
           </td>
           <td colspan="4"></td>
         </tr>
+        @for (platform of platformGainLossTotals(); track platform.id ?? 'unassigned') {
+          <tr class="platform-total-row">
+            <td colspan="10" class="right total-label" [style.color]="platform.color">{{ platform.label }} Total G/L</td>
+            <td class="right" [class.positive]="platform.totalGainLoss >= 0" [class.negative]="platform.totalGainLoss < 0">
+              {{ (platform.totalGainLoss >= 0 ? '+$' : '-$') + (platform.totalGainLoss >= 0 ? platform.totalGainLoss : -platform.totalGainLoss | number:'1.2-2') }}
+            </td>
+            <td colspan="4"></td>
+          </tr>
+        }
       </tfoot>
     </table>
   } @else {
