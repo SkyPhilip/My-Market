@@ -19,7 +19,7 @@ export class HistoryComponent {
   );
 
   readonly totalGainLoss = computed(() =>
-    this.rows().reduce((sum, r) => sum + (r.totalGainLoss ?? 0), 0)
+    +this.rows().reduce((sum, r) => sum + (r.totalGainLoss ?? 0), 0).toFixed(2)
   );
 
   readonly totalCost = computed(() =>
