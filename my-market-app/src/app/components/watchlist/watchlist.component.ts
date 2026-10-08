@@ -265,6 +265,15 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   addError = signal<string | null>(null);
 
   readonly platforms = PLATFORMS;
+  readonly platformFilter = signal('all');
+  readonly filteredWatchlistRows = computed(() => {
+    const rows = this.watchlistRows();
+    const filter = this.platformFilter();
+    if (!this.isCurrentHoldings() || filter === 'all') return rows;
+    return rows.filter(row => filter === 'unassigned'
+      ? !platformById(row.platform)
+      : row.platform === filter);
+  });
 
   hasCostBasis = computed(() => this.watchlistRows().some(r => r.costBasis !== null));
 
@@ -366,7 +375,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   );
 
   sortedWatchlistRows = computed(() => {
-    const rows = this.watchlistRows();
+    const rows = this.filteredWatchlistRows();
     const col = this.sortColumn();
     const dir = this.sortDirection();
     if (!col) return rows;

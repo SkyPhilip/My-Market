@@ -64,6 +64,17 @@
       <button type="submit" class="watchlist-btn add-btn" [disabled]="!canSubmitSymbol() || adding()">Add</button>
     </form>
     }
+    @if (isCurrentHoldings()) {
+      <label class="platform-filter">
+        <span>Filter by Platform</span>
+        <select class="watchlist-input" [ngModel]="platformFilter()" (ngModelChange)="platformFilter.set($event)">
+          <option value="all">All Platforms</option>
+          @for (platform of platforms; track platform.id) {
+            <option [value]="platform.id">{{ platform.label }}</option>
+          }
+        </select>
+      </label>
+    }
   </div>
   @if (addError()) {
     <p class="add-error">{{ addError() }}</p>
@@ -107,6 +118,11 @@
         </tr>
       </thead>
       <tbody>
+        @if (!sortedWatchlistRows().length) {
+          <tr>
+            <td [attr.colspan]="(hasCostBasis() ? 19 : 10) + (isCurrentHoldings() ? -1 : 1)" class="platform-filter-empty">No holdings for this platform.</td>
+          </tr>
+        }
         @for (row of sortedWatchlistRows(); track row.lotId) {
           <tr class="clickable-row" [class.expanded]="isExpanded(row.lotId)" [ngClass]="earningsRowClass(row)"
             [class.stop-hit-row]="trailingStopTriggered(row.lotId)"
