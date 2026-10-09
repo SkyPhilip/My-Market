@@ -84,7 +84,7 @@
         <tr>
           <td colspan="10" class="right total-label">Realized Total</td>
           <td class="right" [class.positive]="totalGainLoss() >= 0" [class.negative]="totalGainLoss() < 0">
-            {{ (totalGainLoss() >= 0 ? '+$' : '-$') + (totalGainLoss() >= 0 ? totalGainLoss() : -totalGainLoss() | number:'1.2-2') }}
+            {{ totalGainLoss() >= 0 ? '+$' : '-$' }}{{ (totalGainLoss() >= 0 ? totalGainLoss() : -totalGainLoss()) | number:'1.2-2':'en-US' }}
             <span class="pct">({{ totalGainLossPercent() >= 0 ? '+' : '' }}{{ totalGainLossPercent() | number:'1.2-2' }}%)</span>
           </td>
           <td colspan="4"></td>
@@ -93,7 +93,7 @@
           <tr class="platform-total-row">
             <td colspan="10" class="right total-label" [style.color]="platform.color">{{ platform.label }} Total G/L</td>
             <td class="right" [class.positive]="platform.totalGainLoss >= 0" [class.negative]="platform.totalGainLoss < 0">
-              {{ (platform.totalGainLoss >= 0 ? '+$' : '-$') + (platform.totalGainLoss >= 0 ? platform.totalGainLoss : -platform.totalGainLoss | number:'1.2-2') }}
+              {{ platform.totalGainLoss >= 0 ? '+$' : '-$' }}{{ (platform.totalGainLoss >= 0 ? platform.totalGainLoss : -platform.totalGainLoss) | number:'1.2-2':'en-US' }}
             </td>
             <td colspan="4"></td>
           </tr>
