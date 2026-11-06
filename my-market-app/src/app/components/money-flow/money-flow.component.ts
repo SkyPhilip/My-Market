@@ -1,7 +1,6 @@
-import { Component, signal, inject, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
+import { Component, signal, computed, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
-import { createChart, IChartApi, ISeriesApi, LineSeries, LineData, Time } from 'lightweight-charts';
 import { AlpacaService } from '../../services/alpaca.service';
 import { FmpService } from '../../services/fmp.service';
 import { WatchlistService } from '../../services/watchlist.service';
@@ -59,13 +58,27 @@ interface FlowEntry {
 interface FlowSeries {
   sector: string;
   color: string;
-  data: LineData<Time>[];
+  data: { time: string; value: number }[];
+}
+
+interface SectorRank {
+  sector: string;
+  color: string;
+  score: number;
+  rank: number;
+  change: number | null;
+}
+
+interface RankingSession {
+  date: string;
+  label: string;
+  rankings: SectorRank[];
+  missing: string[];
 }
 
 const BENCHMARK = 'SPY';
 const FLOW_HISTORY_DAYS = 92; // ~3 months
 const BREAKOUT_LOOKBACK_DAYS = 320; // enough calendar days for 200 completed sessions
-const HISTORY_KEY = 'money_flow_history';
 const MOVERS_SHOWN = 10;
 const BREAKOUTS_SHOWN = 6;
 const BREAKOUT_MULTIPLE = 2;
@@ -75,10 +88,19 @@ const SYMBOL_SECTOR: Record<string, string> = Object.fromEntries(
   Object.entries(SECTOR_SYMBOLS).flatMap(([sector, symbols]) => symbols.map(s => [s, sector] as const)),
 );
 
-const SECTOR_COLORS = [
-  '#4a9eff', '#28a745', '#ffc107', '#b07cff', '#ff7d86', '#40e0d0',
-  '#f0934e', '#9ac4ff', '#f06292', '#8bc34a', '#e0e0e0',
-];
+const SECTOR_COLORS: Record<string, string> = {
+  'Technology': '#4a9eff',
+  'Healthcare': '#28a745',
+  'Financial Services': '#ffc107',
+  'Consumer Cyclical': '#b07cff',
+  'Communication Services': '#ff7d86',
+  'Industrials': '#40e0d0',
+  'Consumer Defensive': '#f0934e',
+  'Energy': '#9ac4ff',
+  'Utilities': '#f06292',
+  'Real Estate': '#8bc34a',
+  'Basic Materials': '#e0e0e0',
+};
 
 @Component({
   selector: 'app-money-flow',
@@ -87,7 +109,7 @@ const SECTOR_COLORS = [
   templateUrl: './money-flow.component.html',
   styleUrl: './money-flow.component.scss',
 })
-export class MoneyFlowComponent implements OnInit, OnDestroy {
+export class MoneyFlowComponent implements OnInit {
   private alpaca = inject(AlpacaService);
   private fmp = inject(FmpService);
   private watchlistService = inject(WatchlistService);
@@ -97,28 +119,53 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
   readonly flows = signal<SectorFlow[]>([]);
   readonly asOf = signal('');
   readonly flowHistory = signal<FlowSeries[]>([]);
-  readonly hiddenSectors = signal<Set<string>>(new Set());
+  readonly historyWindow = signal(20);
+  readonly selectedSector = signal<string | null>(null);
+  readonly hoveredSector = signal<string | null>(null);
+  readonly highlightedSector = computed(() => this.hoveredSector() ?? this.selectedSector());
+  readonly rankRows = Array.from({ length: Object.keys(SECTOR_SYMBOLS).length }, (_, i) => i + 1);
+  readonly rankingSessions = computed<RankingSession[]>(() => {
+    const series = this.flowHistory();
+    const dates = [...new Set(series.flatMap(s => s.data.map(point => point.time)))].sort();
+    const scores = new Map(series.map(s => [s.sector, new Map(s.data.map(point => [point.time, point.value]))]));
+    let previous = new Map<string, number>();
+    return dates.map(date => {
+      const available = series.flatMap(s => {
+        const score = scores.get(s.sector)?.get(date);
+        return score !== undefined && Number.isFinite(score) ? [{ sector: s.sector, color: s.color, score }] : [];
+      }).sort((a, b) => b.score - a.score || a.sector.localeCompare(b.sector));
+      const rankings = available.map((entry, index) => ({
+        ...entry,
+        rank: index + 1,
+        change: previous.has(entry.sector) ? previous.get(entry.sector)! - (index + 1) : null,
+      }));
+      previous = new Map(rankings.map(entry => [entry.sector, entry.rank]));
+      return {
+        date,
+        label: new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+        rankings,
+        missing: series.filter(s => !rankings.some(entry => entry.sector === s.sector)).map(s => s.sector),
+      };
+    }).reverse();
+  });
+  readonly visibleSessions = computed(() => this.rankingSessions().slice(0, this.historyWindow()));
   readonly expandedSector = signal<string | null>(null);
   readonly moversGainers = signal<MoverRow[]>([]);
   readonly moversLosers = signal<MoverRow[]>([]);
   readonly averageBreakoutGroups = signal<AverageBreakoutGroup[]>([]);
+  readonly breakoutsLoading = signal(false);
+  readonly breakoutsLoaded = signal(false);
+  readonly breakoutsError = signal<string | null>(null);
+  readonly breakoutsAsOf = signal('');
   // Bumped after lazily fetching company names so the view re-reads the cache.
   private readonly namesVersion = signal(0);
-
-  private chartEl?: ElementRef<HTMLDivElement>;
-  @ViewChild('flowChart') set flowChartRef(el: ElementRef<HTMLDivElement> | undefined) {
-    this.chartEl = el;
-    if (el) this.renderChart();
-  }
-  private chart: IChartApi | null = null;
-  private seriesMap = new Map<string, ISeriesApi<'Line'>>();
 
   readonly flowScoreTooltip =
     'Flow Score = Rel. Strength + (Breadth − 50) / 50 × 2 + Net Volume Ratio × 3\n' +
     'Rel. Strength = sector avg % change − SPY % change\n' +
     'Breadth = % of constituents up\n' +
     'Net Volume Ratio = (advancing − declining volume) / total volume\n' +
-    'Higher = capital rotating into the sector.';
+    'Higher = stronger inferred rotation into the sector, not measured cash flow.';
 
   ngOnInit(): void {
     this.load();
@@ -149,28 +196,51 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
       this.flows.set(flows);
       this.asOf.set(new Date().toLocaleString());
 
-      // Historical flow-score series (Option A: backfill from daily bars) + persistence (Option B)
+      // Reconstruct completed-session scores from daily bars, not cached live snapshots.
       const startDate = new Date();
-      startDate.setDate(startDate.getDate() - BREAKOUT_LOOKBACK_DAYS);
+      startDate.setDate(startDate.getDate() - FLOW_HISTORY_DAYS - 10);
       const dailyBars = await this.fetchMultiBars(allSymbols, startDate.toISOString().split('T')[0]);
-      this.buildAverageBreakouts(snaps, dailyBars, allSymbols.filter(s => s !== BENCHMARK));
       const historyStart = new Date();
       historyStart.setDate(historyStart.getDate() - FLOW_HISTORY_DAYS);
-      const series = this.mergeWithStoredHistory(this.buildFlowHistory(dailyBars, flows, historyStart.toISOString().split('T')[0]));
-      // Order legend/series to match the table (sorted by today's flow score)
-      const rank = new Map(flows.map((f, i) => [f.sector, i]));
-      const ordered = [...series].sort((a, b) => (rank.get(a.sector) ?? 99) - (rank.get(b.sector) ?? 99));
-      this.flowHistory.set(ordered);
-      // Default to showing only the top sector for readability
-      const top = flows[0]?.sector;
-      this.hiddenSectors.set(new Set(ordered.filter(s => s.sector !== top).map(s => s.sector)));
+      this.flowHistory.set(this.buildFlowHistory(dailyBars, historyStart.toISOString().split('T')[0]));
 
       this.loaded.set(true);
-      this.renderChart();
     } catch (e) {
       this.error.set(e instanceof Error ? e.message : 'Failed to load market data.');
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  async loadBreakouts(): Promise<void> {
+    if (this.breakoutsLoading()) return;
+    this.breakoutsLoading.set(true);
+    this.breakoutsLoaded.set(false);
+    this.breakoutsError.set(null);
+    this.averageBreakoutGroups.set([]);
+    try {
+      const symbols = Array.from(new Set(Object.values(SECTOR_SYMBOLS).flat()));
+      const snaps = await this.fetchAllSnapshots(symbols);
+      if (!symbols.some(symbol => {
+        const snap = snaps[symbol];
+        const price = snap?.latestTrade?.p ?? snap?.minuteBar?.c ?? snap?.dailyBar?.c;
+        return price !== undefined && Number.isFinite(price) && price > 0;
+      })) {
+        throw new Error('No current price data available for breakout analysis.');
+      }
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - BREAKOUT_LOOKBACK_DAYS);
+      const dailyBars = await this.fetchMultiBars(symbols, startDate.toISOString().split('T')[0]);
+      if (!symbols.some(symbol => (dailyBars[symbol]?.length ?? 0) > 0)) {
+        throw new Error('No historical daily bars available for breakout analysis.');
+      }
+      this.buildAverageBreakouts(snaps, dailyBars, symbols);
+      this.breakoutsAsOf.set(new Date().toLocaleString());
+      this.breakoutsLoaded.set(true);
+    } catch (e) {
+      this.breakoutsError.set(e instanceof Error ? e.message : 'Failed to analyze breakouts.');
+    } finally {
+      this.breakoutsLoading.set(false);
     }
   }
 
@@ -304,8 +374,13 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
     return `${sign}${a}`;
   }
 
-  historyDays(): number {
-    return this.flowHistory().reduce((m, s) => Math.max(m, s.data.length), 0);
+  selectSector(sector: string): void {
+    this.selectedSector.update(selected => selected === sector ? null : sector);
+  }
+
+  rankingTooltip(session: RankingSession, entry: SectorRank): string {
+    const change = entry.change === null ? 'Unavailable' : entry.change > 0 ? `Up ${entry.change}` : entry.change < 0 ? `Down ${-entry.change}` : 'Unchanged';
+    return `${entry.sector} · ${session.date}\nRank: ${entry.rank} of ${session.rankings.length}\nFlow Score: ${entry.score.toFixed(2)}\nRank change vs previous session: ${change}`;
   }
 
   toggleRow(sector: string): void {
@@ -341,17 +416,6 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
     }
   }
 
-  toggleSector(sector: string): void {
-    const next = new Set(this.hiddenSectors());
-    if (next.has(sector)) next.delete(sector); else next.add(sector);
-    this.hiddenSectors.set(next);
-    this.seriesMap.get(sector)?.applyOptions({ visible: !next.has(sector) });
-  }
-
-  ngOnDestroy(): void {
-    if (this.chart) { this.chart.remove(); this.chart = null; }
-  }
-
   private async fetchMultiBars(symbols: string[], start: string): Promise<Record<string, AlpacaBar[]>> {
     const merged: Record<string, AlpacaBar[]> = {};
     for (let i = 0; i < symbols.length; i += 100) {
@@ -369,8 +433,11 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
     return merged;
   }
 
-  private buildFlowHistory(dailyBars: Record<string, AlpacaBar[]>, todayFlows: SectorFlow[], historyStart: string): FlowSeries[] {
-    const spyBars = (dailyBars[BENCHMARK] ?? []).filter(bar => bar.t.split('T')[0] >= historyStart).sort((a, b) => a.t.localeCompare(b.t));
+  private buildFlowHistory(dailyBars: Record<string, AlpacaBar[]>, historyStart: string): FlowSeries[] {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const spyBars = (dailyBars[BENCHMARK] ?? [])
+      .filter(bar => bar.t.split('T')[0] < today)
+      .sort((a, b) => a.t.localeCompare(b.t));
     const dates = spyBars.map(b => b.t.split('T')[0]);
 
     const byDate = new Map<string, Map<string, AlpacaBar>>();
@@ -381,106 +448,28 @@ export class MoneyFlowComponent implements OnInit, OnDestroy {
     }
 
     const sectors = Object.keys(SECTOR_SYMBOLS);
-    const seriesData = new Map<string, LineData<Time>[]>(sectors.map(s => [s, [] as LineData<Time>[]]));
+    const seriesData = new Map<string, FlowSeries['data']>(sectors.map(s => [s, []]));
 
     for (let i = 1; i < dates.length; i++) {
       const date = dates[i], prev = dates[i - 1];
+      if (date < historyStart) continue;
       const spyPrev = spyBars[i - 1].c, spyCur = spyBars[i].c;
-      const spyChange = spyPrev ? ((spyCur - spyPrev) / spyPrev) * 100 : 0;
+      if (!Number.isFinite(spyPrev) || spyPrev <= 0 || !Number.isFinite(spyCur) || spyCur <= 0) continue;
+      const spyChange = ((spyCur - spyPrev) / spyPrev) * 100;
       for (const sector of sectors) {
         const entries: FlowEntry[] = [];
         for (const sym of SECTOR_SYMBOLS[sector]) {
           const m = byDate.get(sym);
           const cur = m?.get(date), pv = m?.get(prev);
-          if (!cur || !pv || !pv.c) continue;
+          if (!cur || !pv || !Number.isFinite(cur.c) || cur.c <= 0 || !Number.isFinite(pv.c) || pv.c <= 0 ||
+              !Number.isFinite(cur.v) || cur.v < 0 || !Number.isFinite(pv.v) || pv.v < 0) continue;
           entries.push({ symbol: sym, change: ((cur.c - pv.c) / pv.c) * 100, vol: cur.v, prevVol: pv.v });
         }
         if (!entries.length) continue;
-        seriesData.get(sector)!.push({ time: date as Time, value: this.aggregateFlow(sector, entries, spyChange).flowScore });
+        seriesData.get(sector)!.push({ time: date, value: this.aggregateFlow(sector, entries, spyChange).flowScore });
       }
     }
 
-    // Append today's live point if newer than the last daily bar
-    const todayStr = new Date().toISOString().split('T')[0];
-    const lastDate = dates[dates.length - 1];
-    if (lastDate && todayStr > lastDate) {
-      const todayMap = new Map(todayFlows.map(f => [f.sector, f.flowScore]));
-      for (const sector of sectors) {
-        const v = todayMap.get(sector);
-        if (v !== undefined) seriesData.get(sector)!.push({ time: todayStr as Time, value: v });
-      }
-    }
-
-    return sectors.map((sector, i) => ({ sector, color: SECTOR_COLORS[i % SECTOR_COLORS.length], data: seriesData.get(sector)! }));
-  }
-
-  private mergeWithStoredHistory(series: FlowSeries[]): FlowSeries[] {
-    const map = this.readStoredHistory();
-    for (const s of series) {
-      for (const pt of s.data) {
-        const date = pt.time as string;
-        (map[date] ??= {})[s.sector] = pt.value;
-      }
-    }
-    this.writeStoredHistory(map);
-
-    const sectors = Object.keys(SECTOR_SYMBOLS);
-    const dates = Object.keys(map).sort();
-    return sectors.map((sector, i) => ({
-      sector,
-      color: SECTOR_COLORS[i % SECTOR_COLORS.length],
-      data: dates
-        .filter(d => map[d][sector] !== undefined)
-        .map(d => ({ time: d as Time, value: map[d][sector] })),
-    }));
-  }
-
-  private readStoredHistory(): Record<string, Record<string, number>> {
-    try {
-      const raw = localStorage.getItem(HISTORY_KEY);
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  }
-
-  private writeStoredHistory(map: Record<string, Record<string, number>>): void {
-    try {
-      const dates = Object.keys(map).sort();
-      const trimmed: Record<string, Record<string, number>> = {};
-      for (const d of dates.slice(-250)) trimmed[d] = map[d];
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
-    } catch {
-      // ignore quota errors
-    }
-  }
-
-  private renderChart(): void {
-    const container = this.chartEl?.nativeElement;
-    if (!container || !this.flowHistory().length) return;
-    if (this.chart) { this.chart.remove(); this.chart = null; this.seriesMap.clear(); }
-
-    this.chart = createChart(container, {
-      layout: { background: { color: '#1a1a2e' }, textColor: '#a0a0b0' },
-      grid: { vertLines: { color: '#2a3a5e' }, horzLines: { color: '#2a3a5e' } },
-      timeScale: { timeVisible: false, secondsVisible: false, borderColor: '#2a3a5e' },
-      rightPriceScale: { borderColor: '#2a3a5e' },
-      crosshair: { mode: 0 },
-    });
-
-    const hidden = this.hiddenSectors();
-    for (const s of this.flowHistory()) {
-      const series = this.chart.addSeries(LineSeries, {
-        color: s.color,
-        lineWidth: 2,
-        title: s.sector,
-        lastValueVisible: false,
-        priceLineVisible: false,
-        visible: !hidden.has(s.sector),
-      });
-      series.setData(s.data);
-      this.seriesMap.set(s.sector, series);
-    }
-    this.chart.timeScale().fitContent();
+    return sectors.map(sector => ({ sector, color: SECTOR_COLORS[sector], data: seriesData.get(sector)! }));
   }
 }

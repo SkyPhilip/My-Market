@@ -5,6 +5,31 @@
         Not literal institutional order flow.
       </p>
 
+      <dialog #scoreDialog id="score-definition" class="score-guide" aria-labelledby="score-guide-title">
+        <div class="score-guide__header">
+          <h3 id="score-guide-title">What is a Flow Score?</h3>
+          <button type="button" class="definition-btn" autofocus (click)="scoreDialog.close()">Close</button>
+        </div>
+        <p>A composite indicator of inferred sector rotation, not actual money moving in or out.
+          Higher scores suggest stronger participation and relative performance; negative scores suggest weaker rotation.
+          Zero means the weighted signals balance, not that no trading occurred. It is not a percentage or a buy/sell signal.</p>
+        <p class="score-formula">Flow Score = Relative Strength + ((Breadth − 50) / 50 × 2) + (Net Volume Ratio × 3)</p>
+        <dl>
+          <dt>Relative Strength</dt><dd>Simple average constituent percentage change minus SPY percentage change, in percentage points.</dd>
+          <dt>Breadth</dt><dd>Percentage of tracked constituents with a non-negative change (unchanged stocks count as advancing).</dd>
+          <dt>Net Volume Ratio</dt><dd>(Advancing volume − declining volume) / total volume. Each stock's full daily volume goes to its advancing or declining side; this is not measured buying versus selling volume.</dd>
+        </dl>
+        <figure class="score-example">
+          <figcaption>Illustrative example, not live data: sector +1.5%, SPY +0.5%, breadth 70%, and advancing/declining volume 70M/30M.</figcaption>
+          <div class="score-example__row"><span>Relative Strength</span><span class="score-example__track"><span style="width: 83.333%">+1.00</span></span></div>
+          <div class="score-example__row"><span>Breadth tilt</span><span class="score-example__track"><span style="width: 66.667%">+0.80</span></span></div>
+          <div class="score-example__row"><span>Volume direction</span><span class="score-example__track"><span style="width: 100%">+1.20</span></span></div>
+          <p class="score-example__total">1.00 + 0.80 + 1.20 = <strong>Flow Score +3.00</strong></p>
+        </figure>
+        <p>Rankings compare sectors by score, not by cash inflow. Even the top-ranked sector can have a negative score.
+          Volume Thrust is shown separately and is not part of the score.</p>
+      </dialog>
+
       @if (moversGainers().length || moversLosers().length) {
         <div class="movers-card">
           <div class="movers-col">
@@ -50,6 +75,24 @@
         </div>
       }
 
+      <section class="breakout-controls" aria-labelledby="breakout-title" [attr.aria-busy]="breakoutsLoading()">
+        <h3 id="breakout-title">Average Breakouts</h3>
+        <p>On-demand scan for price or today's volume greater than 2× its 20-, 50-, or 200-session average.
+          Each comparison requires that many completed sessions. Intraday volume is compared with full-day averages.</p>
+        <button type="button" class="load-btn" [disabled]="breakoutsLoading()" (click)="loadBreakouts()">
+          {{ breakoutsLoading() ? 'Analyzing breakouts…' : breakoutsError() ? 'Retry breakout scan' : breakoutsLoaded() ? 'Refresh breakout scan' : 'Scan for breakouts' }}
+        </button>
+        @if (breakoutsLoading()) { <p class="loading" role="status">Fetching breakout data…</p> }
+        @if (breakoutsError()) { <p class="loading" role="alert">{{ breakoutsError() }}</p> }
+        @if (breakoutsLoaded()) {
+          <p class="as-of">Breakout scan as of {{ breakoutsAsOf() }}</p>
+          @for (group of averageBreakoutGroups(); track group.period) {
+            @if (!group.rows.length) {
+              <p class="as-of" role="status">No qualifying {{ group.period }}-session breakouts among stocks with sufficient history.</p>
+            }
+          }
+        }
+      </section>
       @for (group of averageBreakoutGroups(); track group.period) {
         @if (group.rows.length) {
           <section class="breakouts" [attr.aria-label]="group.period + '-day average breakouts'">
@@ -92,7 +135,11 @@
           <thead>
             <tr>
               <th>Sector</th>
-              <th class="right" [title]="flowScoreTooltip">Flow Score</th>
+              <th class="right">
+                <span [title]="flowScoreTooltip">Flow Score</span>
+                <button type="button" class="definition-btn" aria-haspopup="dialog" aria-controls="score-definition"
+                  aria-label="Flow Score definition" (click)="scoreDialog.showModal()">Definition</button>
+              </th>
               <th class="right">Rel. Strength</th>
               <th class="right">Breadth</th>
               <th class="right">Net Volume</th>
@@ -161,19 +208,79 @@
           </tbody>
         </table>
 
-        <div class="chart-card">
-          <div class="chart-head">
-            <h3>Flow score over time · {{ historyDays() }} sessions</h3>
+        <section class="rotation-card" aria-labelledby="rotation-title">
+          <div class="rotation-head">
+            <h3 id="rotation-title">Sector Rotation History · {{ visibleSessions().length }} sessions</h3>
+            <div class="history-window" aria-label="History length">
+              @for (days of [20, 60]; track days) {
+                <button type="button" [attr.aria-pressed]="historyWindow() === days" (click)="historyWindow.set(days)">{{ days }} sessions</button>
+              }
+            </div>
+          </div>
+          <p id="rotation-help" class="rotation-help">
+            Completed trading sessions, newest on the left. Ranked by Flow Score, best at the top.
+            Hover, focus, or select a sector to follow it. Select again to clear.
+            Ties are ordered alphabetically; missing sectors are unranked.
+          </p>
+          @if (rankingSessions().length) {
             <div class="legend">
               @for (s of flowHistory(); track s.sector) {
-                <button type="button" class="legend-item" [class.off]="hiddenSectors().has(s.sector)" (click)="toggleSector(s.sector)">
+                <button type="button" class="legend-item"
+                  [class.dimmed]="highlightedSector() !== null && highlightedSector() !== s.sector"
+                  [attr.aria-pressed]="selectedSector() === s.sector"
+                  (mouseenter)="hoveredSector.set(s.sector)" (mouseleave)="hoveredSector.set(null)"
+                  (focus)="hoveredSector.set(s.sector)" (blur)="hoveredSector.set(null)"
+                  (click)="selectSector(s.sector)">
                   <span class="swatch" [style.background]="s.color"></span>{{ s.sector }}
                 </button>
               }
             </div>
-          </div>
-          <div #flowChart class="flow-chart"></div>
-        </div>
+            <div class="rotation-scroll" tabindex="0" role="region" aria-label="Sector ranking history" aria-describedby="rotation-help">
+              <table class="rotation-grid">
+                <caption class="sr-only">Daily sector rankings by Flow Score, newest completed session first</caption>
+                <thead>
+                  <tr>
+                    <th scope="col" class="rank-label">Rank</th>
+                    @for (session of visibleSessions(); track session.date) {
+                      <th scope="col" [title]="session.date"><time [attr.datetime]="session.date">{{ session.label }}</time></th>
+                    }
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (rank of rankRows; track rank) {
+                    <tr>
+                      <th scope="row" class="rank-label">{{ rank }}</th>
+                      @for (session of visibleSessions(); track session.date) {
+                        <td>
+                          @if (session.rankings[rank - 1]; as entry) {
+                            <button type="button" class="rank-cell"
+                              [style.background]="entry.color"
+                              [class.dimmed]="highlightedSector() !== null && highlightedSector() !== entry.sector"
+                              [class.highlighted]="highlightedSector() === entry.sector"
+                              [attr.aria-pressed]="selectedSector() === entry.sector"
+                              [attr.aria-label]="rankingTooltip(session, entry)" [title]="rankingTooltip(session, entry)"
+                              (mouseenter)="hoveredSector.set(entry.sector)" (mouseleave)="hoveredSector.set(null)"
+                              (focus)="hoveredSector.set(entry.sector)" (blur)="hoveredSector.set(null)"
+                              (click)="selectSector(entry.sector)">{{ entry.sector }}</button>
+                          } @else {
+                            <span class="missing-cell" [title]="'No data: ' + session.missing.join(', ')">No data</span>
+                          }
+                        </td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            @for (session of visibleSessions(); track session.date) {
+              @if (session.missing.length) {
+                <p class="rotation-help">{{ session.label }}: missing {{ session.missing.join(', ') }}. Ranks compare available sectors only.</p>
+              }
+            }
+          } @else {
+            <p class="rotation-help" role="status">No completed-session history available. Historical daily bars are needed to reconstruct rankings.</p>
+          }
+        </section>
       }
     </div>
   
