@@ -5,7 +5,7 @@ This project was generated using [Angular CLI](https://github.com/angular/angula
 ## Retirement account holdings
 
 In Current Holdings, select **Retirement account** when adding a lot, or click
-its symbol and toggle **Retirement account** in the holding options. An asterisk
+its symbol and toggle **Tax deferred account** in the holding options. An asterisk
 marks that lot; the same ticker can have marked and unmarked lots. The marker is
 saved with the holding and included in data backups. It is informational and
 does not change gain/loss or tax calculations. Use **Tax status** next to the

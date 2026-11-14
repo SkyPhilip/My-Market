@@ -175,7 +175,7 @@
                         <button type="button" class="platform-option retirement-option"
                           [attr.aria-pressed]="row.retirementAccount"
                           (click)="toggleRetirementAccount(row)">
-                          {{ row.retirementAccount ? '✓ ' : '' }}Retirement account
+                          {{ row.retirementAccount ? '✓ ' : '' }}Tax deferred account
                         </button>
                       </div>
                     }
@@ -191,7 +191,7 @@
                   >{{ row.symbol }}</button>
                 }
                 @if (row.retirementAccount) {
-                  <span class="retirement-marker" title="Retirement account — Tax deferred" aria-label="Retirement account, Tax deferred">*</span>
+                  <span class="retirement-marker" [style.color]="symbolColor(row)" title="Retirement account — Tax deferred" aria-label="Retirement account, Tax deferred">*</span>
                 }
                 </span>
               } @else {

@@ -77,6 +77,7 @@ describe('WatchlistComponent retirement holdings', () => {
     await fixture.whenStable();
     const toggle = element.querySelector<HTMLButtonElement>('.retirement-option')!;
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    expect(toggle.textContent?.trim()).toBe('Tax deferred account');
     toggle.click();
     await fixture.whenStable();
     expect(element.querySelectorAll('.retirement-marker')).toHaveLength(1);
@@ -94,6 +95,7 @@ describe('WatchlistComponent retirement holdings', () => {
     expect(fixture.componentInstance.watchlistRows().map(row => row.retirementAccount)).toEqual([true, false]);
     element.querySelectorAll<HTMLButtonElement>('.symbol-text--platform')[0].click();
     await fixture.whenStable();
+    expect(element.querySelector<HTMLButtonElement>('.retirement-option')?.textContent?.trim()).toBe('✓ Tax deferred account');
     element.querySelector<HTMLButtonElement>('.retirement-option')!.click();
     await fixture.whenStable();
     expect(element.querySelectorAll('.retirement-marker')).toHaveLength(0);
@@ -113,6 +115,34 @@ describe('WatchlistComponent retirement holdings', () => {
     expect(symbol.title).toBe('Held at JP Morgan — click for holding options — Tax deferred');
     expect(symbol.getAttribute('aria-label')).toContain('Tax deferred');
     expect(element.querySelector<HTMLElement>('.retirement-marker')?.title).toContain('Tax deferred');
+  });
+
+  it('updates the asterisk color when the holding platform changes', async () => {
+    localStorage.setItem(key, JSON.stringify([
+      { symbol: 'AMZN', lotId: 'one', costBasis: 10, shares: 1, platform: 'schwab', retirementAccount: true },
+    ]));
+    await create();
+    const element: HTMLElement = fixture.nativeElement;
+    const marker = () => element.querySelector<HTMLElement>('.retirement-marker')!;
+    const symbol = () => element.querySelector<HTMLButtonElement>('.symbol-text--platform')!;
+    expect(marker().style.color).toBe('rgb(74, 158, 255)');
+    expect(marker().style.color).toBe(symbol().style.color);
+
+    symbol().click();
+    await fixture.whenStable();
+    const jpmorgan = [...element.querySelectorAll<HTMLButtonElement>('.platform-option')]
+      .find(button => button.textContent?.trim() === 'JP Morgan')!;
+    jpmorgan.click();
+    await fixture.whenStable();
+    expect(marker().style.color).toBe('rgb(227, 179, 65)');
+    expect(marker().style.color).toBe(symbol().style.color);
+
+    symbol().click();
+    await fixture.whenStable();
+    element.querySelector<HTMLButtonElement>('.platform-menu .platform-option')!.click();
+    await fixture.whenStable();
+    expect(marker().style.color).toBe('');
+    expect(symbol().style.color).toBe('');
   });
 
   it('restores symbols when the picker is dismissed or another lot is opened', async () => {
