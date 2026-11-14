@@ -60,20 +60,34 @@
             </div>
           }
         </span>
+        <label class="retirement-input">
+          <input type="checkbox" name="retirementAccount" [(ngModel)]="newRetirementAccount" [disabled]="adding()" />
+          Retirement account
+        </label>
       }
       <button type="submit" class="watchlist-btn add-btn" [disabled]="!canSubmitSymbol() || adding()">Add</button>
     </form>
     }
     @if (isCurrentHoldings()) {
-      <label class="platform-filter">
-        <span>Filter by Platform</span>
-        <select class="watchlist-input" [ngModel]="platformFilter()" (ngModelChange)="platformFilter.set($event)">
-          <option value="all">All Platforms</option>
-          @for (platform of platforms; track platform.id) {
-            <option [value]="platform.id">{{ platform.label }}</option>
-          }
-        </select>
-      </label>
+      <div class="platform-filter">
+        <label>
+          <span>Filter by Platform</span>
+          <select class="watchlist-input" [ngModel]="platformFilter()" (ngModelChange)="platformFilter.set($event)">
+            <option value="all">All Platforms</option>
+            @for (platform of platforms; track platform.id) {
+              <option [value]="platform.id">{{ platform.label }}</option>
+            }
+          </select>
+        </label>
+        <label>
+          <span>Tax status</span>
+          <select class="watchlist-input retirement-filter" [ngModel]="taxFilter()" (ngModelChange)="taxFilter.set($event)">
+            <option value="all">All holdings</option>
+            <option value="deferred">Tax deferred only</option>
+            <option value="non-deferred">Non-tax deferred only</option>
+          </select>
+        </label>
+      </div>
     }
   </div>
   @if (addError()) {
@@ -120,7 +134,7 @@
       <tbody>
         @if (!sortedWatchlistRows().length) {
           <tr>
-            <td [attr.colspan]="(hasCostBasis() ? 19 : 10) + (isCurrentHoldings() ? -1 : 1)" class="platform-filter-empty">No holdings for this platform.</td>
+            <td [attr.colspan]="(hasCostBasis() ? 19 : 10) + (isCurrentHoldings() ? -1 : 1)" class="platform-filter-empty">No holdings match the selected filters.</td>
           </tr>
         }
         @for (row of sortedWatchlistRows(); track row.lotId) {
@@ -133,6 +147,7 @@
             (click)="toggleChart(row)">
             <td class="symbol">
               @if (isCurrentHoldings()) {
+                <span class="holding-symbol">
                 @if (isEditingPlatform(row.lotId)) {
                   <span class="platform-picker" (click)="$event.stopPropagation()">
                     <button type="button" class="platform-trigger platform-trigger--inline"
@@ -148,7 +163,7 @@
                       <span aria-hidden="true">▾</span>
                     </button>
                     @if (openPlatformPicker() === row.lotId) {
-                      <div class="platform-menu" role="group" [attr.aria-label]="'Choose platform for ' + row.symbol">
+                      <div class="platform-menu" role="group" [attr.aria-label]="'Holding options for ' + row.symbol">
                         <button type="button" class="platform-option" [attr.aria-pressed]="!row.platform"
                           (click)="setPlatform(row, '')">—</button>
                       @for (p of platforms; track p.id) {
@@ -157,18 +172,28 @@
                           <span class="platform-swatch" [style.background-color]="p.color" aria-hidden="true"></span>{{ p.label }}
                         </button>
                       }
+                        <button type="button" class="platform-option retirement-option"
+                          [attr.aria-pressed]="row.retirementAccount"
+                          (click)="toggleRetirementAccount(row)">
+                          {{ row.retirementAccount ? '✓ ' : '' }}Retirement account
+                        </button>
                       </div>
                     }
                   </span>
                 } @else {
-                  <span
+                  <button
+                    type="button"
                     class="symbol-text symbol-text--platform"
-                    role="button"
                     [style.color]="symbolColor(row)"
-                    [title]="platformFor(row.platform) ? ('Held at ' + platformFor(row.platform)!.label + ' — click to change') : 'Set platform'"
+                    [attr.aria-label]="'Holding options for ' + row.symbol + (row.retirementAccount ? ', Tax deferred' : '')"
+                    [title]="(platformFor(row.platform) ? ('Held at ' + platformFor(row.platform)!.label + ' — click for holding options') : 'Holding options') + (row.retirementAccount ? ' — Tax deferred' : '')"
                     (click)="startEditPlatform(row.lotId); $event.stopPropagation()"
-                  >{{ row.symbol }}</span>
+                  >{{ row.symbol }}</button>
                 }
+                @if (row.retirementAccount) {
+                  <span class="retirement-marker" title="Retirement account — Tax deferred" aria-label="Retirement account, Tax deferred">*</span>
+                }
+                </span>
               } @else {
                 <span
                   class="symbol-text"
@@ -563,7 +588,7 @@
       @if (hasCostBasis()) {
         <tfoot>
           <tr class="summary-row">
-            <td colspan="11">Portfolio Totals</td>
+            <td colspan="11" title="Totals for the selected filters">Totals{{ summaryTaxSuffix() }}</td>
             <td class="price"><span class="summary-label">Total Cost</span>{{'$'}}{{ portfolioTotalCost() | number:'1.2-2' }}</td>
             <td class="price" [class.positive]="portfolioTotalGainLoss() >= 0" [class.negative]="portfolioTotalGainLoss() < 0"><span class="summary-label">Market Value</span>{{'$'}}{{ portfolioMarketValue() | number:'1.2-2' }}</td>
             <td></td>
@@ -580,26 +605,31 @@
             <tr class="platform-total-row">
               <td colspan="18">
                 <div class="gain-loss-summary">
-                  <span class="gain-loss-summary__scope" [style.color]="platform.color">{{ platform.label }}</span>
+                  <span class="gain-loss-summary__scope" [style.color]="platform.color" [title]="summaryTaxFilter() === 'deferred' ? 'Tax deferred only' : summaryTaxFilter() === 'non-deferred' ? 'Non-tax deferred only' : ''">{{ platform.label }}{{ summaryTaxFilter() === 'deferred' ? ' *' : '' }}</span>
                   <span class="gain-loss-summary__item positive">Total Gains: +${{ platform.totalGains | number:'1.2-2' }}</span>
                   <span class="gain-loss-summary__item negative">Total Losses: -${{ -platform.totalLosses | number:'1.2-2' }}</span>
                 </div>
               </td>
             </tr>
           }
-          <tr class="gain-loss-summary-row">
-            <td colspan="18">
-              <div class="gain-loss-summary">
-                <span class="gain-loss-summary__scope">Portfolio</span>
-                <span class="gain-loss-summary__item positive">Total Gains: +${{ portfolioTotalGains() | number:'1.2-2' }}</span>
-                <span class="gain-loss-summary__item negative">Total Losses: -${{ -portfolioTotalLosses() | number:'1.2-2' }}</span>
-              </div>
-            </td>
-          </tr>
+          @if (portfolioPlatformGainLossTotals().length !== 1) {
+            <tr class="gain-loss-summary-row">
+              <td colspan="18">
+                <div class="gain-loss-summary">
+                  <span class="gain-loss-summary__scope" title="Totals for the selected filters">Totals{{ summaryTaxSuffix() }}</span>
+                  <span class="gain-loss-summary__item positive">Total Gains: +${{ portfolioTotalGains() | number:'1.2-2' }}</span>
+                  <span class="gain-loss-summary__item negative">Total Losses: -${{ -portfolioTotalLosses() | number:'1.2-2' }}</span>
+                </div>
+              </td>
+            </tr>
+          }
         </tfoot>
       }
     </table>
     @if (isCurrentHoldings() && hasCostBasis()) {
+      @if (summaryTaxFilter() !== 'all' || platformFilter() !== 'all') {
+        <p class="loading">The history chart shows all holdings, regardless of the selected filters.</p>
+      }
       <app-portfolio-gain-loss-chart [points]="portfolioGainLossService.snapshots()"></app-portfolio-gain-loss-chart>
     }
     @if (newsPanelOpen()) {

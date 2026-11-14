@@ -58,6 +58,11 @@ h2 {
   color: #8892b0;
   font-size: 13px;
 }
+.platform-filter label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .watchlist-table .platform-filter-empty { color: #8892b0; text-align: center; }
 .watchlist-input {
   background: #0f1a30;
@@ -71,6 +76,13 @@ h2 {
 }
 .holding-input {
   width: 140px;
+}
+.retirement-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #e0e0e0;
+  font-size: 13px;
 }
 .watchlist-input:focus {
   border-color: #4a9eff;
@@ -325,9 +337,19 @@ h2 {
 }
 .stop-gap-pill--warn { --gap-color: #f0a020; }
 .stop-gap-pill--danger { --gap-color: #dc3545; }
+.holding-symbol {
+  display: inline-flex;
+  align-items: baseline;
+  white-space: nowrap;
+}
 /* Symbol doubles as the platform trigger in Current Holdings; text color reflects the platform. */
 .symbol-text--platform {
   cursor: pointer;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
 }
 .symbol-text--platform:hover {
   text-decoration: underline;
@@ -392,6 +414,8 @@ h2 {
 }
 .platform-option:hover, .platform-option:focus-visible { background: #243656; }
 .platform-option[aria-pressed='true'] { background: #1b2947; }
+.retirement-option { border-top: 1px solid #2a3a5e; white-space: nowrap; }
+.retirement-marker { color: #f0c040; margin-left: 2px; }
 .chart-row td {
   padding: 0 16px 12px !important;
   border-bottom: 1px solid #2a3a5e;

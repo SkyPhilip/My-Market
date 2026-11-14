@@ -196,6 +196,7 @@ interface WatchlistRow {
   earningsSurprises: FinnhubEarningsSurprise[] | null;
   addedAt: string | null;
   platform: string | null;
+  retirementAccount: boolean;
   note: string | null;
   cashValue: number | null;
   cashValueLoading: boolean;
@@ -205,8 +206,9 @@ interface WatchlistRow {
 
 type SortColumn = 'symbol' | 'name' | 'sector' | 'price' | 'change' | 'changePercent' | 'volume' | 'pegy' | 'dividendYield' | 'costBasis' | 'shares' | 'totalCost' | 'marketValue' | 'gainLoss' | 'gainLossPercent' | 'totalGainLoss' | 'weightPercent';
 type SortDirection = 'asc' | 'desc';
+type TaxFilter = 'all' | 'deferred' | 'non-deferred';
 
-type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number; lotId?: string; addedAt?: string; platform?: string; note?: string };
+type WatchlistEntry = string | { symbol: string; costBasis: number; shares?: number; lotId?: string; addedAt?: string; platform?: string; retirementAccount?: boolean; note?: string };
 
 const HOLDINGS_LIST = 'Current Holdings';
 
@@ -248,7 +250,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   watchlistState = computed(() => {
     const snap = this.fetchSnapshots.state();
     return {
-      prefetchOrBusy: this.loading() || (this.symbols().length > 0 && snap.prefetchOrBusy),
+      prefetchOrBusy: this.loading() || (this.symbols().length > 0 && snap.busy),
       errorResOrException: this.symbols().length > 0 ? snap.errorResOrException : null,
     };
   });
@@ -261,15 +263,28 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   newShares = '';
   newCostBasis = '';
   newPlatform = PLATFORMS[0].id;
+  newRetirementAccount = false;
   adding = signal(false);
   addError = signal<string | null>(null);
 
   readonly platforms = PLATFORMS;
   readonly platformFilter = signal('all');
-  readonly filteredWatchlistRows = computed(() => {
+  readonly taxFilter = signal<TaxFilter>('all');
+  readonly summaryTaxFilter = computed(() => this.isCurrentHoldings() ? this.taxFilter() : 'all');
+  readonly summaryTaxSuffix = computed(() =>
+    this.summaryTaxFilter() === 'deferred' ? ' *' :
+      this.summaryTaxFilter() === 'non-deferred' ? ' (non-tax deferred)' : ''
+  );
+  private readonly portfolioSummaryRows = computed(() => {
     const rows = this.watchlistRows();
+    const filter = this.summaryTaxFilter();
+    return filter === 'all' ? rows : rows.filter(row => row.retirementAccount === (filter === 'deferred'));
+  });
+  readonly filteredWatchlistRows = computed(() => {
+    const rows = this.portfolioSummaryRows();
+    if (!this.isCurrentHoldings()) return rows;
     const filter = this.platformFilter();
-    if (!this.isCurrentHoldings() || filter === 'all') return rows;
+    if (filter === 'all') return rows;
     return rows.filter(row => filter === 'unassigned'
       ? !platformById(row.platform)
       : row.platform === filter);
@@ -277,12 +292,16 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
   hasCostBasis = computed(() => this.watchlistRows().some(r => r.costBasis !== null));
 
+  private readonly allHoldingsTotalCost = computed(() =>
+    this.watchlistRows().reduce((sum, row) => sum + (row.totalCost ?? 0), 0)
+  );
+
   portfolioTotalCost = computed(() => {
-    return this.watchlistRows().reduce((sum, r) => sum + (r.totalCost ?? 0), 0);
+    return this.filteredWatchlistRows().reduce((sum, r) => sum + (r.totalCost ?? 0), 0);
   });
 
   portfolioMarketValue = computed(() => {
-    return this.watchlistRows().reduce((sum, r) => sum + (r.marketValue ?? 0), 0);
+    return this.filteredWatchlistRows().reduce((sum, r) => sum + (r.marketValue ?? 0), 0);
   });
 
   portfolioTotalGainLoss = computed(() => {
@@ -290,16 +309,16 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   });
 
   portfolioTotalGains = computed(() => {
-    return this.watchlistRows().reduce((sum, row) => sum + Math.max(row.totalGainLoss ?? 0, 0), 0);
+    return this.filteredWatchlistRows().reduce((sum, row) => sum + Math.max(row.totalGainLoss ?? 0, 0), 0);
   });
 
   portfolioTotalLosses = computed(() => {
-    return this.watchlistRows().reduce((sum, row) => sum + Math.min(row.totalGainLoss ?? 0, 0), 0);
+    return this.filteredWatchlistRows().reduce((sum, row) => sum + Math.min(row.totalGainLoss ?? 0, 0), 0);
   });
 
   portfolioPlatformGainLossTotals = computed(() => {
     const totals = new Map<string | null, { gains: number; losses: number }>();
-    for (const row of this.watchlistRows()) {
+    for (const row of this.filteredWatchlistRows()) {
       const platformId = platformById(row.platform)?.id ?? null;
       const total = totals.get(platformId) ?? { gains: 0, losses: 0 };
       total.gains += Math.max(row.totalGainLoss ?? 0, 0);
@@ -387,7 +406,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         const cmp = pk !== 0 ? pk : a.symbol.localeCompare(b.symbol);
         return dir === 'asc' ? cmp : -cmp;
       }
-      const portfolioCost = col === 'weightPercent' ? this.portfolioTotalCost() : 0;
+      const portfolioCost = col === 'weightPercent' ? this.allHoldingsTotalCost() : 0;
       const weight = (r: WatchlistRow): number | null =>
         r.totalCost !== null && portfolioCost > 0 ? r.totalCost / portfolioCost : null;
       const aVal = col === 'weightPercent' ? weight(a) : a[col];
@@ -459,6 +478,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     this.newShares = '';
     this.newCostBasis = '';
     this.newPlatform = PLATFORMS[0].id;
+    this.newRetirementAccount = false;
     this.addError.set(null);
   }
 
@@ -469,7 +489,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   /** This holding's total cost as a percent of the whole portfolio's cost — i.e. its
    *  allocation weight. Weights across all rows sum to 100%. Null when portfolio cost is 0. */
   weightPercent(row: WatchlistRow): number | null {
-    const totalCost = this.portfolioTotalCost();
+    const totalCost = this.allHoldingsTotalCost();
     if (row.totalCost === null || totalCost <= 0) return null;
     return +((row.totalCost / totalCost) * 100).toFixed(2);
   }
@@ -541,12 +561,18 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   openPlatformPicker = signal<string | null>(null);
 
   togglePlatformPicker(id: string): void {
-    this.openPlatformPicker.update(current => current === id ? null : id);
+    if (this.openPlatformPicker() === id) {
+      this.closePlatformPicker();
+    } else {
+      this.editingPlatformLots.set(new Set());
+      this.openPlatformPicker.set(id);
+    }
   }
 
   @HostListener('document:click')
   closePlatformPicker(): void {
     this.openPlatformPicker.set(null);
+    this.editingPlatformLots.set(new Set());
   }
 
   isEditingPlatform(lotId: string): boolean {
@@ -554,15 +580,20 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   }
 
   startEditPlatform(lotId: string): void {
-    this.editingPlatformLots.update(s => new Set(s).add(lotId));
+    this.editingPlatformLots.set(new Set([lotId]));
     this.openPlatformPicker.set(lotId);
   }
 
   /** Assigns (or clears) a lot's platform from the inline dropdown. */
   setPlatform(row: WatchlistRow, id: string): void {
     this.patchRow(row.lotId, { platform: id || null });
-    this.openPlatformPicker.set(null);
-    this.editingPlatformLots.update(s => { const next = new Set(s); next.delete(row.lotId); return next; });
+    this.closePlatformPicker();
+    this.saveToStorage();
+  }
+
+  toggleRetirementAccount(row: WatchlistRow): void {
+    this.patchRow(row.lotId, { retirementAccount: !row.retirementAccount });
+    this.closePlatformPicker();
     this.saveToStorage();
   }
 
@@ -607,10 +638,11 @@ export class WatchlistComponent implements OnInit, OnDestroy {
   private buildEntries(): WatchlistEntry[] {
     return this.watchlistRows().map(r => {
       if (r.costBasis != null) {
-        const entry: { symbol: string; costBasis: number; shares?: number; lotId: string; addedAt?: string; platform?: string; note?: string } = { symbol: r.symbol, costBasis: r.costBasis, lotId: r.lotId };
+        const entry: Exclude<WatchlistEntry, string> = { symbol: r.symbol, costBasis: r.costBasis, lotId: r.lotId };
         if (r.shares != null) entry.shares = r.shares;
         if (r.addedAt != null) entry.addedAt = r.addedAt;
         if (r.platform != null) entry.platform = r.platform;
+        if (this.isCurrentHoldings() && r.retirementAccount) entry.retirementAccount = true;
         if (r.note) entry.note = r.note;
         return entry;
       }
@@ -625,7 +657,11 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
   private capturePortfolioGainLoss(): void {
     if (!this.isCurrentHoldings()) return;
-    this.portfolioGainLossService.recordSnapshot(this.portfolioTotalGains(), this.portfolioTotalLosses());
+    const rows = this.watchlistRows();
+    this.portfolioGainLossService.recordSnapshot(
+      rows.reduce((sum, row) => sum + Math.max(row.totalGainLoss ?? 0, 0), 0),
+      rows.reduce((sum, row) => sum + Math.min(row.totalGainLoss ?? 0, 0), 0),
+    );
   }
 
   async loadWatchlist(): Promise<void> {
@@ -639,8 +675,8 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
       // Each entry is a lot; the same symbol may appear more than once (different cost/share).
       const lots = rawEntries.map(entry => typeof entry === 'string'
-        ? { lotId: entry, symbol: entry, costBasis: null as number | null, shares: null as number | null, addedAt: null as string | null, platform: null as string | null, note: null as string | null }
-        : { lotId: entry.lotId ?? crypto.randomUUID(), symbol: entry.symbol, costBasis: entry.costBasis, shares: entry.shares ?? null, addedAt: entry.addedAt ?? null, platform: entry.platform ?? null, note: entry.note ?? null });
+        ? { lotId: entry, symbol: entry, costBasis: null as number | null, shares: null as number | null, addedAt: null as string | null, platform: null as string | null, retirementAccount: false, note: null as string | null }
+        : { lotId: entry.lotId ?? crypto.randomUUID(), symbol: entry.symbol, costBasis: entry.costBasis, shares: entry.shares ?? null, addedAt: entry.addedAt ?? null, platform: entry.platform ?? null, retirementAccount: entry.retirementAccount === true, note: entry.note ?? null });
       const uniqueSymbols = [...new Set(lots.map(l => l.symbol))];
       this.symbols.set(uniqueSymbols);
 
@@ -679,7 +715,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
         const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
         const volume = snap?.dailyBar?.v ?? null;
-        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, maData: {}, visibleMas: new Set(), volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: lot.addedAt, platform: lot.platform, note: lot.note, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
+        return { lotId: lot.lotId, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, maData: {}, visibleMas: new Set(), volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: lot.addedAt, platform: lot.platform, retirementAccount: lot.retirementAccount, note: lot.note, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
       });
       this.watchlistRows.set(rows);
       this.saveToStorage();
@@ -708,7 +744,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
     const gainLoss = price !== null && costBasis !== null ? +(price - costBasis).toFixed(2) : null;
     const gainLossPercent = gainLoss !== null && costBasis !== null ? +((gainLoss / costBasis) * 100).toFixed(2) : null;
     const totalGainLoss = marketValue !== null && totalCost !== null ? +(marketValue - totalCost).toFixed(2) : null;
-    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, maData: {}, visibleMas: new Set(), volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: null, platform: null, note: null, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
+    return { lotId: symbol, symbol, name, sector, price, change, changePercent, pegy: null, pegyLoading: false, pegyLoaded: false, dividendYield: this.#dividendYield(symbol, price), volume, costBasis, shares, totalCost, marketValue, gainLoss, gainLossPercent, totalGainLoss, chartData: [], candleData: [], chartLoading: false, maData: {}, visibleMas: new Set(), volumeData: [], volumeProfileData: [], rangeHigh: null, rangeLow: null, swingHigh: null, swingLow: null, openingRangeHigh: null, openingRangeLow: null, sessionShadeUntil: null, range: '1D', showRangeLevels: false, peerSymbol: null, peerName: null, peerData: [], peerLoading: false, metrics: null, metricsLoading: false, recommendation: null, recommendationLoading: false, nextEarnings: null, nextEarningsLoaded: false, earningsSurprises: null, addedAt: null, platform: null, retirementAccount: false, note: null, cashValue: null, cashValueLoading: false, cashValueLoaded: false, cashValueBreakdown: null };
   }
 
   /** Adds a ticker (no cost basis) to this watchlist if not already present. Used by external + buttons. */
@@ -880,6 +916,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
         earningsSurprises: null,
         addedAt: new Date().toISOString(),
         platform: requiresHoldingInputs ? this.newPlatform : null,
+        retirementAccount: requiresHoldingInputs && this.newRetirementAccount,
         note: null,
         cashValue: null,
         cashValueLoading: false,
@@ -1382,7 +1419,7 @@ export class WatchlistComponent implements OnInit, OnDestroy {
 
   @HostListener('document:keydown.escape')
   closeFullscreen(): void {
-    this.openPlatformPicker.set(null);
+    this.closePlatformPicker();
     if (this.fullscreenLot() !== null) this.fullscreenLot.set(null);
   }
 

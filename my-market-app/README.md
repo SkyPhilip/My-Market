@@ -2,6 +2,19 @@
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.9.
 
+## Retirement account holdings
+
+In Current Holdings, select **Retirement account** when adding a lot, or click
+its symbol and toggle **Retirement account** in the holding options. An asterisk
+marks that lot; the same ticker can have marked and unmarked lots. The marker is
+saved with the holding and included in data backups. It is informational and
+does not change gain/loss or tax calculations. Use **Tax status** next to the
+platform filter to show all, tax-deferred, or non-tax-deferred lots. The latter
+means lots not marked as retirement holdings, not a verified tax classification.
+Totals and platform summaries reflect both the platform and tax-status filters.
+The separate gains/losses totals row is hidden when only one platform is shown.
+Allocation weights and the historical gains/losses chart still cover all holdings.
+
 ## Money Flow: Sector Rotation History
 
 The ranking grid reconstructs daily Flow Scores from Alpaca historical constituent
